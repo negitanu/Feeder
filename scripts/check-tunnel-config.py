@@ -30,7 +30,7 @@ if __name__=='__main__':
     command=['docker','compose']
     if args.env_file:
         command.extend(['--env-file',args.env_file])
-    command.extend(['-f','compose.yml','--profile','tunnel','config','--format','json'])
+    command.extend(['-f','compose.yml','config','--format','json'])
     result=subprocess.run(command,capture_output=True,text=True)
     if result.returncode:
         print('Compose configuration failed. Check required settings without sharing resolved output.',file=sys.stderr)

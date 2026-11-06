@@ -28,7 +28,7 @@ URLは公開HTTP(S)形式で、認証情報やローカルアドレスを含め�
 
 通常のComposeは `local` モードで、ホストのループバックだけへポートを公開します。Host制限はDNS再バインド等の保護であり、利用者の認証ではありません。ポートを外部向けに変更してローカルUIを公開しないでください。
 
-外部向けは `.env` に公開設定と `TUNNEL_TOKEN` を設定し、`docker compose --profile tunnel up -d --build` で起動します。`FEEDER_ACCESS_MODE=tunnel` を設定します。Webポートはlocalhostにのみ公開されます。公開ホストのAccess許可ポリシーと **Protect with Access** によるJWT検証を事前に設定します。Tunnel tokenだけで閲覧者が認証されるわけではありません。アプリはJWTを独自検証せず、認証済みのTunnel接続と信頼されたコンテナネットワークを境界とします。
+外部向けは `.env` に公開設定と `TUNNEL_TOKEN` を設定し、`docker compose up -d --build` で起動します。`FEEDER_ACCESS_MODE=tunnel` を設定します。Webポートはlocalhostにのみ公開されます。公開ホストのAccess許可ポリシーと **Protect with Access** によるJWT検証を事前に設定します。Tunnel tokenだけで閲覧者が認証されるわけではありません。アプリはJWTを独自検証せず、認証済みのTunnel接続と信頼されたコンテナネットワークを境界とします。
 
 `.env` の `FEEDER_PUBLIC_ORIGIN` に末尾スラッシュのない正確なHTTPS origin、`FEEDER_PUBLIC_HOST` に同じauthority、`FEEDER_TUNNEL_IMAGE` に固定バージョンまたはdigestの公式イメージ、`TUNNEL_TOKEN` にTunnelトークンを指定します。`FEEDER_ACCESS_MODE=tunnel` も指定してください。.envは権限を制限し、値をリポジトリへ入れないでください。
 
@@ -36,7 +36,7 @@ URLは公開HTTP(S)形式で、認証情報やローカルアドレスを含め�
 
 ```sh
 python3 scripts/check-tunnel-config.py
-docker compose --profile tunnel up -d --build
+docker compose up -d --build
 ```
 
 トークンはコネクターの環境変数になり、権限を持つ利用者にはコンテナ設定や `docker compose config` で見えます。`.env` の権限を制限し、その出力を共有しないでください。`.env` 変更後は対象コンテナを再作成してください。
@@ -44,3 +44,5 @@ docker compose --profile tunnel up -d --build
 公開後の受入は実ドメインで、未ログイン・非許可利用者の拒否、許可利用者の画面とCSRF操作、Service Auth policyを通したサービス認証＋アプリBearer、originへ直接入れないこと、healthと終了処理を確認します。この実装作業では実トークンを用意せず、Tunnel接続・外部公開を実行していません。
 
 参考: [Cloudflareの公開アプリ保護](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)、[token-file実行パラメーター](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/run-parameters/)、[Composeのマージとreset](https://docs.docker.com/reference/compose-file/merge/)、[RustCrypto SHA-2](https://docs.rs/sha2/latest/sha2/)。
+
+Cloudflareの公開ホストのサービスURLには `http://web:8080` を設定します。接続ログにTCP 7844の警告が出る場合、送信先へのTCP 7844をネットワーク側で許可するとHTTP/2へのフォールバックを利用できます。UDP 7844のQUIC接続が成功していればTunnelはQUICで動作します。

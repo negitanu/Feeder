@@ -23,7 +23,7 @@ def request(path,method='GET',data=None,headers=None):
     except urllib.error.HTTPError as e:return e.code,e.read()
 try:
     print('Linux container verification project:',project,flush=True)
-    cmd('up','--no-build','-d','--wait','--wait-timeout','90')
+    cmd('up','--no-build','-d','--wait','--wait-timeout','90','web','worker')
     raw=cmd('ps','--format','json')
     containers=json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines()]
     assert {c['Service'] for c in containers}=={'web','worker'}, containers
@@ -88,7 +88,7 @@ try:
         assert './feeder.sqlite3' in archive.getnames()
     restore_created=True
     subprocess.run([*restore_compose,'run','--rm','--no-deps','-T','--entrypoint','tar','web','-C','/data','-xzf','-'],input=backup,cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
-    subprocess.run([*restore_compose,'up','--no-build','-d','--wait','--wait-timeout','90'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
+    subprocess.run([*restore_compose,'up','--no-build','-d','--wait','--wait-timeout','90','web','worker'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restored=json.loads(request(f'/api/articles/{article_id}')[1]);assert restored['is_read'] and restored['is_starred']
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
     assert json.loads(request('/api/library')[1])==library_snapshot
@@ -99,7 +99,7 @@ try:
     assert json.loads(request('/api/collection/settings')[1])=={'enabled':False,'interval_seconds':120}
     subprocess.run([*restore_compose,'down','--volumes','--remove-orphans','--timeout','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restore_created=False
-    cmd('up','--no-build','-d','--force-recreate','--wait','--wait-timeout','90')
+    cmd('up','--no-build','-d','--force-recreate','--wait','--wait-timeout','90','web','worker')
     status,body=request(f'/api/articles/{article_id}');assert status==200
     state=json.loads(body);assert state['is_read'] and state['is_starred']
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot

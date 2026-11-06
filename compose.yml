@@ -42,7 +42,6 @@ services:
       start_period: 10s
 
   tunnel:
-    profiles: [tunnel]
     image: ${FEEDER_TUNNEL_IMAGE:-cloudflare/cloudflared:2026.10.7}
     command: [tunnel, --no-autoupdate, run]
     environment:

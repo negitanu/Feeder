@@ -55,11 +55,11 @@ class EnvConfigurationTests(unittest.TestCase):
         self.assertEqual(config['services']['web']['ports'][0]['published'], '18766')
         self.assertEqual(config['services']['worker']['environment']['OPENROUTER_API_KEY'], 'SYNTHETIC_SHELL_OVERRIDE')
         self.envfile.write_text(self.envfile.read_text().replace('TUNNEL_TOKEN=' + TOKEN, "TUNNEL_TOKEN='SYNTHETIC_$DOLLAR_VALUE'"))
-        config = json.loads(self.config(env={**self.env, 'COMPOSE_PROFILES': 'tunnel'}).stdout)
+        config = json.loads(self.config().stdout)
         # `compose config` escapes a literal dollar as `$$` in its reusable output.
         self.assertEqual(config['services']['tunnel']['environment']['TUNNEL_TOKEN'], 'SYNTHETIC_$$DOLLAR_VALUE')
 
-    def test_tunnel_profile_and_missing_token(self):
+    def test_default_tunnel_and_missing_token(self):
         with self.envfile.open('a') as envfile:
             envfile.write('FEEDER_ACCESS_MODE=tunnel\nFEEDER_ALLOWED_HOSTS=reader.example.com,127.0.0.1:8080\n')
         check = subprocess.run(['python3', str(ROOT / 'scripts/check-tunnel-config.py'), '--env-file', str(self.envfile)], cwd=ROOT, env=self.env, capture_output=True, text=True)
