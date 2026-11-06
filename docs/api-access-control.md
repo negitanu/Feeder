@@ -14,13 +14,15 @@
 
 - `GET /api/v1/feeds` と `GET /api/v1/feeds/{id}`: RSS購読の一覧・詳細。
 - `POST /api/v1/feeds`: `{url, folder?, source_type?: "rss"}`。安全な初回取得に成功してから購読・フォルダー・記事を一括保存し201を返します。
-- `PATCH /api/v1/feeds/{id}`: `title`、`folder`、`enabled` の部分更新。`poll_interval: null` は全体設定の継承を示します。個別間隔の非null値は未対応として拒否します。
+- `PATCH /api/v1/feeds/{id}`: `title`、`folder`、`enabled`、RSSの `url`、`poll_interval` の部分更新。収集間隔は60〜86400秒の整数、`null` は全体設定の継承です。
 - `DELETE /api/v1/feeds/{id}` と `POST /api/v1/feeds/{id}/refresh`: 削除と安全な手動取得。停止中の購読の手動取得は409です。
 - `GET /api/v1/articles` と `GET /api/v1/articles/{id}`: 記事の一覧・詳細。`PATCH /api/v1/articles/{id}` は `{is_read?, is_starred?}` のJSON booleanだけを受け付けます。閲覧履歴は作りません。
 
 記事一覧はID降順で、`limit` 1〜100（既定30）、`feed`、`is_read`、`is_starred`、`q`（最大200文字の文字列検索）、`source_type=rss`、`before_id` または `after_id` を使えます。`after_id=0` からの取得はID昇順で、`has_more`、`next_before_id`、`next_after_id` により継続できます。重複・未知・矛盾する条件は拒否します。応答は `data`、エラーは `error: {code, message}` にまとめます。
 
-本文はFeederのプレーンテキストです。公開日時は現段階ではFeederに保存した日時表現で、旧版のUTC日時文字列へ完全に統一する変換は未実装です。フォルダーなしはnullです。SNS・ページ観測・研究系API、旧版の全フィールドや個別収集間隔、既存キーのデータ移行は未完了です。旧版API全体の互換性を完了したとは扱いません。
+URLは公開HTTP(S)形式で、認証情報やローカルアドレスを含められません。変更時にはネットワーク取得をせず、既存のフィード・記事IDと状態を維持し、前URLのETag・Last-Modified・最終確認日時・収集エラーを消します。次の収集時にDNSを検証します。正規化後のURLが同じ場合は既存の収集状態を維持します。重複URLまたは収集中の編集・削除は409で拒否し、同時に指定した変更も保存しません。
+
+本文はFeederのプレーンテキストです。公開日時は現段階ではFeederに保存した日時表現です。フォルダーなしはnullです。SNS・ページ観測・研究系API、旧版の全フィールドは未完了です。旧版API全体の互換性を完了したとは扱いません。旧データ・既存キーの移行は対象外です。
 
 ## 公開構成
 
@@ -31,6 +33,15 @@
 `FEEDER_PUBLIC_ORIGIN` に末尾スラッシュのない正確なHTTPS origin、`FEEDER_PUBLIC_HOST` に同じauthority、`FEEDER_TUNNEL_IMAGE` に固定バージョンまたはdigestの公式イメージ、`FEEDER_TUNNEL_TOKEN_FILE` に保護したtokenファイルの場所を指定します。token本文をコマンドラインやリポジトリへ入れません。ファイルはLinuxホスト上でconnectorのUID/GID65532から読める所有者・権限で配置してください（例: 所有者65532:65532、0400）。他の利用者が読める配置は避けてください。
 
 公開前に、環境変数を設定したうえで `python3 scripts/check-tunnel-config.py` を実行します。この検査はtoken本文を読みません。設定を確認してから `docker compose -f compose.yml -f compose.tunnel.yml up -d --build` で起動します。Composeの `!reset` 対応版が必要です。通常のローカル環境と同じvolumeを使うため、切替前にWeb/workerを停止しバックアップしてください。
+
+移植元と同様に `.env` の `TUNNEL_TOKEN` を使う場合は、上記のファイル方式に代えて `compose.tunnel-env.yml` を指定します。両方の上書きファイルを同時に使わないでください。`.env` の `FEEDER_PUBLIC_ORIGIN`、`FEEDER_PUBLIC_HOST`、`FEEDER_TUNNEL_IMAGE` と `TUNNEL_TOKEN` を設定したうえで、次のように検査・起動します。
+
+```sh
+python3 scripts/check-tunnel-config.py --token-mode env
+docker compose -f compose.yml -f compose.tunnel-env.yml up -d --build
+```
+
+別ファイルを使用する場合は、検査スクリプトとComposeのそれぞれに `--env-file /path/to/file` を指定します。`.env` 方式ではトークンはコネクターの環境変数になり、権限を持つ利用者にはコンテナ設定や `docker compose config` で見えます。`.env` の権限を制限し、その出力を共有しないでください。検査スクリプトは設定内容やトークン値を表示しません。`.env` 変更後は対象コンテナを再作成してください。
 
 公開後の受入は実ドメインで、未ログイン・非許可利用者の拒否、許可利用者の画面とCSRF操作、Service Auth policyを通したサービス認証＋アプリBearer、originへ直接入れないこと、healthと終了処理を確認します。この実装作業では実トークンを用意せず、Tunnel接続・外部公開を実行していません。
 

@@ -1,6 +1,8 @@
 # 移行元の仕様と機能の対応表
 
-現在の着手順と未完了の依存関係は [優先順位バックログ](handoff/priority-backlog.md) を参照。末尾の段階別受入は履歴であり、後続の実装状況を優先する。
+現行方針: 旧 FeedAstrolabe データの変換・移行は対象外。以下の旧データ移行に関する説明は過去の記録であり、機能の移植状況とは区別する。
+
+現在の着手順と未完了の依存関係は [優先順位バックログ](priority-backlog.md) を参照。末尾の段階別受入は履歴であり、後続の実装状況を優先する。
 
 参照基準は FeedAstrolabe commit `b9592aa641f254a29a626937a6c02d7fcae54a6c` の Web 本仕様。移行状況は各見出しと末尾の受入状況に記録する。段階は暫定で、実装時にシナリオ単位へ分解する。参照スナップショットは [reference](../reference/feedastrolabe/README.md) に置く。
 
@@ -32,6 +34,8 @@
 
 移行元: [feed-collection](../reference/feedastrolabe/specs/feed-collection/spec.md)。要件: Subscription management、Idempotent refresh、Safe website discovery and subscription preview。
 
+RSS購読URLの修正と収集中の競合防止は [subscription-url-edit](../openspec/specs/subscription-url-edit/spec.md) に移植。個別収集間隔は [feed-poll-interval](../openspec/changes/feed-poll-interval/proposal.md) で実装・検証する。
+
 ## grounded-assistant（段階 4、未着手）
 
 移行元: [grounded-assistant](../reference/feedastrolabe/specs/grounded-assistant/spec.md)。要件: Grounded assistance、Controlled external processing、Safe reproducible jobs。
@@ -49,6 +53,8 @@ local は既存 Web サーバーの localhost 運用を指し、廃止対象の 
 ## reader-interactions（段階 1–2、部分移植）
 
 移行元: [reader-interactions](../reference/feedastrolabe/specs/reader-interactions/spec.md)。要件: Persistent disclosure without reset control、Pause and resume subscriptions in context、Prominent scoped bulk read、Floating article detail and original access、Content-first article detail、Optional bounded hero image、Detail bounded by the article area、Mark displayed article as read、Global unread library entry。
+
+一覧を保持する詳細パネルと外側操作は [reader-floating-detail](../openspec/specs/reader-floating-detail/spec.md) で実装。URL・ブラウザ履歴、前後移動や画像・研究操作は引き続き未完了。
 
 ## reader-panel-polish（段階 1–2、未着手）
 

@@ -35,7 +35,7 @@ SIGTERM/SIGINT で新規処理を止め、上限付きの実行中処理を終�
 
 `FEEDER_ALLOWED_HOSTS` を明示指定する場合はクライアントのポートを含め、health 用 `127.0.0.1:8080` も残してください。既定値は Compose が `FEEDER_PORT` に合わせて計算します。[実行設定](runtime-config.md)を参照してください。
 
-外部認証と Cloudflare Tunnel はまだ移植していません。現在の Compose はホストローカルからの利用を前提とし、認証境界の実装・受入前に外部へ公開しません。旧 renderer/observer も未移植であり、動作しない仮サービスは追加していません。
+標準 Compose はホストローカルからの利用を前提とします。外部向けの Cloudflare Tunnel 構成例はありますが、実ドメインでの認証受入は未実施です。旧 renderer/observer は未移植です。
 
 ## 更新と永続データ
 
@@ -77,4 +77,6 @@ DB v6 は共有の表示タイムゾーンと初期表示を追加します。v5
 
 DB v7 はAPIキーのハッシュ・期限・失効とAPI回数上限を追加します。v6から更新する前に `feeder.v6-backup.sqlite3` を作ります。セッションはメモリー上のため、Web再起動後にはブラウザ操作の再試行が必要な場合があります。
 
-外部公開には[保護されたTunnel構成](api-access-control.md)を参照してください。`compose.tunnel.yml` はWebのhost portを消します。設定の構文検査だけで実際のAccessポリシー・JWT検証が完了したとは扱いません。実ドメインの受入は別途必要です。
+DB v8 はフィードごとの収集間隔を追加します。認識済みの Feeder v7 から更新する際、`feeder.v7-backup.sqlite3` を作ります。未設定のフィードは全体設定を継承します。
+
+外部公開には[保護されたTunnel構成](api-access-control.md)を参照してください。ファイル方式の `compose.tunnel.yml` と `.env` 方式の `compose.tunnel-env.yml` は、どちらもWebのhost portを消します。設定の構文検査だけで実際のAccessポリシー・JWT検証が完了したとは扱いません。実ドメインの受入は別途必要です。
