@@ -59,7 +59,8 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
         let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if !objects.is_empty()
             && !(app_id == APP_ID
-                && ((version == 4 && reader::recognized_v4(&objects))
+                && ((version == 5 && collection::recognized_v5(&objects))
+                    || (version == 4 && reader::recognized_v4(&objects))
                     || (version == 3 && collection::recognized_v3(&objects))
                     || (version == 2 && collection::recognized_v2(&objects))
                     || (version == 1
@@ -81,7 +82,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     db.pragma_update(None, "foreign_keys", true)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if (1..=3).contains(&version) {
+    if (1..=4).contains(&version) {
         let backup_path = path.with_extension(format!("v{version}-backup.sqlite3"));
         if backup_path.exists() {
             return Err("database backup already exists; refusing to overwrite it".into());
@@ -103,7 +104,10 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     if version < 4 {
         tx.execute(reader::VISITS, [])?;
     }
-    tx.pragma_update(None, "user_version", 4)?;
+    if version < 5 {
+        collection::migrate_order(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", 5)?;
     if demo {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
         if count == 0 {
@@ -543,6 +547,15 @@ mod tests {
             [],
         )
         .unwrap();
+        for sql in [
+            "DROP TRIGGER folder_order_insert",
+            "DROP TRIGGER feed_order_insert",
+            "DROP TRIGGER feed_order_move",
+            "DROP TABLE feed_order",
+            "DROP TABLE folder_order",
+        ] {
+            db.execute(sql, []).unwrap();
+        }
         db.execute("DROP TABLE article_visits", []).unwrap();
         db.execute("DROP TABLE refresh_leases", []).unwrap();
         db.execute("DROP TABLE collection_settings", []).unwrap();

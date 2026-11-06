@@ -42,3 +42,11 @@ Feeder schema v4 adds `article_visits`. Known v3 databases are backed up to `.v3
 - `POST /api/articles/bulk-state`: `{ids:[...],read?,starred?,filters:{...}}` validates up to 100 distinct existing in-scope IDs and updates atomically. It returns `{updated:number}`. Mutation filters reject pagination keys, unknown fields and invalid conditions. Empty selection, duplicate/unknown/out-of-scope IDs or absent actions are rejected without partial changes.
 
 `q` is one literal phrase up to 256 bytes. Any/exclude fields allow up to 20 CSV phrases, each 256 bytes and at most 4096 bytes of encoded text per field. List query input is bounded to 8192 bytes and 32 distinct parameters; duplicate/unknown fields and invalid values are rejected. Each internal batch is 1–100 articles. Malformed or reversed dates, unavailable sources and unsupported scope/order are rejected before mutation. Historical newline search URLs, signed continuations and timezone display settings remain future compatibility work.
+
+## Library ordering (schema v5)
+
+`GET /api/library` returns folders in stored order and feeds grouped by stored folder order, then unfiled, with stored order inside each group.
+
+`POST /api/library/order` accepts `{expected, order}`. Both are complete snapshots `{folders: [id, ...], feeds: [{id, folder_id}, ...]}` in canonical group order; unfiled is `folder_id: null`. Folder and feed identities must each occur exactly once. `expected` must match current arrangement. Success204; stale409; invalid membership/duplicates/missing identities400; hostile Origin403. Unknown JSON fields are rejected. SQLite applies membership and positions in one immediate transaction. New sources and reassigned feeds append; deleting a folder appends its feeds to unfiled in their prior order. Renaming sources preserves positions.
+
+Known v4 databases are backed up before the v5 migration. Migration preserves visible name/title/id ordering and adds order tables/triggers. Unknown schemas and an existing migration-backup path are refused. Article IDs, read/star flags, visits and collection settings are unchanged.

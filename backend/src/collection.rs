@@ -80,6 +80,54 @@ pub fn recognized_v3(objects: &[(String, String, Option<String>)]) -> bool {
     rows.collect::<Result<Vec<_>, _>>()
         .is_ok_and(|v| v == objects)
 }
+const ORDER_SCHEMA: &[&str] = &[
+    "CREATE TABLE folder_order (folder_id INTEGER PRIMARY KEY REFERENCES folders(id) ON DELETE CASCADE, position INTEGER NOT NULL)",
+    "CREATE TABLE feed_order (feed_id INTEGER PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE, position INTEGER NOT NULL)",
+    "CREATE TRIGGER folder_order_insert AFTER INSERT ON folders BEGIN INSERT INTO folder_order VALUES (NEW.id, COALESCE((SELECT MAX(position)+1 FROM folder_order),0)); END",
+    "CREATE TRIGGER feed_order_insert AFTER INSERT ON feeds BEGIN INSERT INTO feed_order VALUES (NEW.id, COALESCE((SELECT MAX(o.position)+1 FROM feed_order o JOIN feeds f ON f.id=o.feed_id WHERE f.folder_id IS NEW.folder_id),0)); END",
+    "CREATE TRIGGER feed_order_move AFTER UPDATE OF folder_id ON feeds WHEN OLD.folder_id IS NOT NEW.folder_id BEGIN UPDATE feed_order SET position=COALESCE((SELECT MAX(o.position)+1 FROM feed_order o JOIN feeds f ON f.id=o.feed_id WHERE f.folder_id IS NEW.folder_id AND f.id != NEW.id),0) WHERE feed_id=NEW.id; END",
+];
+pub fn migrate_order(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
+    tx.execute(ORDER_SCHEMA[0], [])?;
+    tx.execute(ORDER_SCHEMA[1], [])?;
+    tx.execute(
+        "INSERT INTO folder_order SELECT id, ROW_NUMBER() OVER (ORDER BY name,id)-1 FROM folders",
+        [],
+    )?;
+    tx.execute("INSERT INTO feed_order SELECT id, ROW_NUMBER() OVER (PARTITION BY folder_id ORDER BY title,id)-1 FROM feeds", [])?;
+    for sql in &ORDER_SCHEMA[2..] {
+        tx.execute(sql, [])?;
+    }
+    Ok(())
+}
+pub fn recognized_v5(objects: &[(String, String, Option<String>)]) -> bool {
+    let Ok(mut db) = Connection::open_in_memory() else {
+        return false;
+    };
+    if db.execute(SCHEMA, []).is_err() {
+        return false;
+    }
+    let Ok(tx) = db.transaction() else {
+        return false;
+    };
+    if migrate(&tx).is_err()
+        || tx.execute(reader::VISITS, []).is_err()
+        || migrate_order(&tx).is_err()
+        || tx.commit().is_err()
+    {
+        return false;
+    }
+    let Ok(mut stmt) = db.prepare(
+        "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name",
+    ) else {
+        return false;
+    };
+    let Ok(rows) = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))) else {
+        return false;
+    };
+    rows.collect::<Result<Vec<_>, _>>()
+        .is_ok_and(|v| v == objects)
+}
 #[derive(Serialize)]
 struct Folder {
     id: i64,
@@ -125,9 +173,10 @@ struct Library {
     feeds: Vec<Feed>,
 }
 async fn library(State(db): State<Db>) -> Result<Json<Library>, StatusCode> {
-    let db = db.lock().map_err(err)?;
-    let folders = db
-        .prepare("SELECT id,name FROM folders ORDER BY name,id")
+    let mut db = db.lock().map_err(err)?;
+    let tx = db.transaction().map_err(err)?;
+    let folders = tx
+        .prepare("SELECT f.id,f.name FROM folders f JOIN folder_order o ON o.folder_id=f.id ORDER BY o.position,f.id")
         .map_err(err)?
         .query_map([], |r| {
             Ok(Folder {
@@ -138,8 +187,122 @@ async fn library(State(db): State<Db>) -> Result<Json<Library>, StatusCode> {
         .map_err(err)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(err)?;
-    let feeds=db.prepare("SELECT id,url,title,folder_id,paused,last_checked,last_error FROM feeds ORDER BY title,id").map_err(err)?.query_map([],feed).map_err(err)?.collect::<Result<Vec<_>,_>>().map_err(err)?;
+    let feeds=tx.prepare("SELECT f.id,f.url,f.title,f.folder_id,f.paused,f.last_checked,f.last_error FROM feeds f JOIN feed_order o ON o.feed_id=f.id LEFT JOIN folder_order fo ON fo.folder_id=f.folder_id ORDER BY f.folder_id IS NULL,fo.position,o.position,f.id").map_err(err)?.query_map([],feed).map_err(err)?.collect::<Result<Vec<_>,_>>().map_err(err)?;
+    tx.commit().map_err(err)?;
     Ok(Json(Library { folders, feeds }))
+}
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct Snapshot {
+    folders: Vec<i64>,
+    feeds: Vec<OrderedFeed>,
+}
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct OrderedFeed {
+    id: i64,
+    folder_id: Option<i64>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OrderInput {
+    expected: Snapshot,
+    order: Snapshot,
+}
+fn snapshot(db: &Connection) -> Result<Snapshot, StatusCode> {
+    let folders = db
+        .prepare("SELECT folder_id FROM folder_order ORDER BY position,folder_id")
+        .map_err(err)?
+        .query_map([], |r| r.get(0))
+        .map_err(err)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(err)?;
+    let feeds = db.prepare("SELECT f.id,f.folder_id FROM feeds f JOIN feed_order o ON o.feed_id=f.id LEFT JOIN folder_order fo ON fo.folder_id=f.folder_id ORDER BY f.folder_id IS NULL,fo.position,o.position,f.id").map_err(err)?.query_map([], |r| Ok(OrderedFeed { id:r.get(0)?, folder_id:r.get(1)? })).map_err(err)?.collect::<Result<Vec<_>,_>>().map_err(err)?;
+    Ok(Snapshot { folders, feeds })
+}
+fn valid_snapshot(candidate: &Snapshot, current: &Snapshot) -> bool {
+    use std::collections::{HashMap, HashSet};
+    let folders: HashSet<_> = candidate.folders.iter().copied().collect();
+    let current_folders: HashSet<_> = current.folders.iter().copied().collect();
+    let ids: HashSet<_> = candidate.feeds.iter().map(|f| f.id).collect();
+    let current_ids: HashSet<_> = current.feeds.iter().map(|f| f.id).collect();
+    if folders.len() != candidate.folders.len()
+        || folders != current_folders
+        || ids.len() != candidate.feeds.len()
+        || ids != current_ids
+    {
+        return false;
+    }
+    let ranks: HashMap<_, _> = candidate
+        .folders
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i))
+        .collect();
+    let mut previous = 0;
+    for feed in &candidate.feeds {
+        let rank = match feed.folder_id {
+            Some(id) => match ranks.get(&id) {
+                Some(rank) => *rank,
+                None => return false,
+            },
+            None => candidate.folders.len(),
+        };
+        if rank < previous {
+            return false;
+        }
+        previous = rank;
+    }
+    true
+}
+async fn order_library(
+    State(db): State<Db>,
+    headers: HeaderMap,
+    Json(input): Json<OrderInput>,
+) -> Result<StatusCode, StatusCode> {
+    if !origin_allowed(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let mut db = db.lock().map_err(err)?;
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(err)?;
+    let current = snapshot(&tx)?;
+    // Reject malformed snapshots before comparing stale membership or order.
+    if !valid_snapshot(&input.expected, &input.expected)
+        || !valid_snapshot(&input.order, &input.order)
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if input.expected != current {
+        return Err(StatusCode::CONFLICT);
+    }
+    if !valid_snapshot(&input.order, &current) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    for (position, id) in input.order.folders.iter().enumerate() {
+        tx.execute(
+            "UPDATE folder_order SET position=? WHERE folder_id=?",
+            params![position as i64, id],
+        )
+        .map_err(err)?;
+    }
+    for feed in &input.order.feeds {
+        tx.execute(
+            "UPDATE feeds SET folder_id=? WHERE id=?",
+            params![feed.folder_id, feed.id],
+        )
+        .map_err(err)?;
+    }
+    for (position, feed) in input.order.feeds.iter().enumerate() {
+        tx.execute(
+            "UPDATE feed_order SET position=? WHERE feed_id=?",
+            params![position as i64, feed.id],
+        )
+        .map_err(err)?;
+    }
+    tx.commit().map_err(err)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -210,14 +373,21 @@ async fn delete_folder(
     if !origin_allowed(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let db = db.lock().map_err(err)?;
-    if db
+    let mut db = db.lock().map_err(err)?;
+    let tx = db.transaction().map_err(err)?;
+    let ids = tx.prepare("SELECT f.id FROM feeds f JOIN feed_order o ON o.feed_id=f.id WHERE f.folder_id=? ORDER BY o.position,f.id").map_err(err)?.query_map([id], |r| r.get::<_, i64>(0)).map_err(err)?.collect::<Result<Vec<_>,_>>().map_err(err)?;
+    for feed_id in ids {
+        tx.execute("UPDATE feeds SET folder_id=NULL WHERE id=?", [feed_id])
+            .map_err(err)?;
+    }
+    if tx
         .execute("DELETE FROM folders WHERE id=?", [id])
         .map_err(err)?
         == 0
     {
         return Err(StatusCode::NOT_FOUND);
     }
+    tx.commit().map_err(err)?;
     Ok(StatusCode::NO_CONTENT)
 }
 #[derive(Deserialize)]
@@ -731,6 +901,7 @@ fn apply_refresh(db: &mut Connection, id: i64, result: Fetched) -> Result<Feed, 
 pub fn routes() -> Router<Db> {
     Router::new()
         .route("/api/library", get(library))
+        .route("/api/library/order", post(order_library))
         .route(
             "/api/collection/settings",
             get(settings).patch(update_settings),
@@ -748,6 +919,180 @@ pub fn routes() -> Router<Db> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn ordering_is_atomic_and_lifecycle_appends() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db");
+        let db = Arc::new(Mutex::new(open_db(&path, false).unwrap()));
+        {
+            let c = db.lock().unwrap();
+            c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','A',1),(2,'https://b','B',1),(3,'https://c','C',NULL); INSERT INTO articles(id,title,content,url,published,is_read,is_starred,feed_id) VALUES (1,'a','','','',1,1,1); INSERT INTO article_visits VALUES (1,'today');").unwrap();
+        }
+        let parse = |s: &str| serde_json::from_str::<OrderInput>(s).unwrap();
+        let original = r#"{"expected":{"folders":[1,2],"feeds":[{"id":1,"folder_id":1},{"id":2,"folder_id":1},{"id":3,"folder_id":null}]},"order":{"folders":[2,1],"feeds":[{"id":2,"folder_id":2},{"id":1,"folder_id":1},{"id":3,"folder_id":null}]}}"#;
+        assert_eq!(
+            order_library(State(db.clone()), HeaderMap::new(), Json(parse(original))).await,
+            Ok(StatusCode::NO_CONTENT)
+        );
+        assert_eq!(
+            order_library(State(db.clone()), HeaderMap::new(), Json(parse(original))).await,
+            Err(StatusCode::CONFLICT)
+        );
+        let invalid = r#"{"expected":{"folders":[2,1],"feeds":[{"id":2,"folder_id":2},{"id":1,"folder_id":1},{"id":3,"folder_id":null}]},"order":{"folders":[2,1],"feeds":[{"id":2,"folder_id":99},{"id":1,"folder_id":1},{"id":3,"folder_id":null}]}}"#;
+        assert_eq!(
+            order_library(State(db.clone()), HeaderMap::new(), Json(parse(invalid))).await,
+            Err(StatusCode::BAD_REQUEST)
+        );
+        {
+            let c = db.lock().unwrap();
+            c.execute(
+                "INSERT INTO feeds(id,url,title,folder_id) VALUES (4,'https://d','D',2)",
+                [],
+            )
+            .unwrap();
+            assert_eq!(
+                snapshot(&c)
+                    .unwrap()
+                    .feeds
+                    .iter()
+                    .map(|f| f.id)
+                    .collect::<Vec<_>>(),
+                vec![2, 4, 1, 3]
+            );
+            assert_eq!(c.query_row("SELECT is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=1) FROM articles WHERE id=1", [], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?))).unwrap(), (1,1,"today".into()));
+        }
+        delete_folder(State(db.clone()), Path(2), HeaderMap::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            snapshot(&db.lock().unwrap())
+                .unwrap()
+                .feeds
+                .iter()
+                .map(|f| f.id)
+                .collect::<Vec<_>>(),
+            vec![1, 3, 2, 4]
+        );
+        drop(db);
+        assert_eq!(
+            snapshot(&open_db(&path, false).unwrap())
+                .unwrap()
+                .feeds
+                .iter()
+                .map(|f| f.id)
+                .collect::<Vec<_>>(),
+            vec![1, 3, 2, 4]
+        );
+    }
+    #[tokio::test]
+    async fn rejects_invalid_snapshots_and_hostile_origin_without_changes() {
+        use serde_json::json;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        db.lock().unwrap().execute_batch("INSERT INTO folders(id,name) VALUES (1,'One'),(2,'Two'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','A',1),(2,'https://b','B',NULL);").unwrap();
+        let expected =
+            json!({"folders":[1,2],"feeds":[{"id":1,"folder_id":1},{"id":2,"folder_id":null}]});
+        let invalid_orders = [
+            json!({"folders":[1,1],"feeds":[{"id":1,"folder_id":1},{"id":2,"folder_id":null}]}),
+            json!({"folders":[1,2],"feeds":[{"id":1,"folder_id":1},{"id":1,"folder_id":null}]}),
+            json!({"folders":[1],"feeds":[{"id":1,"folder_id":1},{"id":2,"folder_id":null}]}),
+            json!({"folders":[1,2],"feeds":[{"id":1,"folder_id":1}]}),
+            json!({"folders":[1,3],"feeds":[{"id":1,"folder_id":1},{"id":2,"folder_id":null}]}),
+            json!({"folders":[1,2],"feeds":[{"id":1,"folder_id":1},{"id":99,"folder_id":null}]}),
+            json!({"folders":[1,2],"feeds":[{"id":1,"folder_id":99},{"id":2,"folder_id":null}]}),
+        ];
+        for order in invalid_orders {
+            let input =
+                serde_json::from_value(json!({"expected": expected, "order": order})).unwrap();
+            assert_eq!(
+                order_library(State(db.clone()), HeaderMap::new(), Json(input)).await,
+                Err(StatusCode::BAD_REQUEST)
+            );
+            assert_eq!(
+                snapshot(&db.lock().unwrap()).unwrap(),
+                serde_json::from_value::<Snapshot>(expected.clone()).unwrap()
+            );
+        }
+        let mut headers = HeaderMap::new();
+        headers.insert(header::HOST, "localhost:8080".parse().unwrap());
+        headers.insert(header::ORIGIN, "https://hostile.example".parse().unwrap());
+        let input = serde_json::from_value(json!({"expected":expected,"order":{"folders":[2,1],"feeds":[{"id":1,"folder_id":1},{"id":2,"folder_id":null}]}})).unwrap();
+        assert_eq!(
+            order_library(State(db.clone()), headers, Json(input)).await,
+            Err(StatusCode::FORBIDDEN)
+        );
+        assert_eq!(
+            snapshot(&db.lock().unwrap()).unwrap(),
+            serde_json::from_value::<Snapshot>(expected).unwrap()
+        );
+    }
+    #[tokio::test]
+    async fn rename_preserves_position_and_edit_move_appends() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        db.lock().unwrap().execute_batch("INSERT INTO folders(id,name) VALUES (1,'One'),(2,'Two'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','A',1),(2,'https://b','B',2),(3,'https://c','C',2);").unwrap();
+        let edit = |title: Option<&str>, folder_id| EditFeed {
+            title: title.map(str::to_string),
+            folder_id,
+            paused: None,
+        };
+        let _ = edit_feed(
+            State(db.clone()),
+            Path(2),
+            HeaderMap::new(),
+            Json(edit(Some("Z"), None)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            snapshot(&db.lock().unwrap())
+                .unwrap()
+                .feeds
+                .iter()
+                .map(|f| f.id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        let _ = edit_feed(
+            State(db.clone()),
+            Path(1),
+            HeaderMap::new(),
+            Json(edit(None, Some(Some(2)))),
+        )
+        .await
+        .unwrap();
+        let result = snapshot(&db.lock().unwrap()).unwrap();
+        assert_eq!(
+            result
+                .feeds
+                .iter()
+                .map(|f| (f.id, f.folder_id))
+                .collect::<Vec<_>>(),
+            vec![(2, Some(2)), (3, Some(2)), (1, Some(2))]
+        );
+    }
+    #[test]
+    fn v4_order_migration_preserves_visible_order_and_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db");
+        let c = open_db(&path, false).unwrap();
+        c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','Z',1),(2,'https://b','A',1),(3,'https://c','C',NULL); DROP TRIGGER folder_order_insert; DROP TRIGGER feed_order_insert; DROP TRIGGER feed_order_move; DROP TABLE feed_order; DROP TABLE folder_order; PRAGMA user_version=4;").unwrap();
+        drop(c);
+        let c = open_db(&path, false).unwrap();
+        let order = snapshot(&c).unwrap();
+        assert_eq!(order.folders, vec![2, 1]);
+        assert_eq!(
+            order.feeds.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![2, 1, 3]
+        );
+        let backup = Connection::open(path.with_extension("v4-backup.sqlite3")).unwrap();
+        assert_eq!(
+            backup
+                .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            4
+        );
+    }
     #[tokio::test]
     async fn fragments_do_not_create_duplicate_subscriptions() {
         assert_eq!(

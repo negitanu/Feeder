@@ -729,6 +729,15 @@ mod tests {
         let c = open_db(&path, true).unwrap();
         c.execute("UPDATE articles SET is_read=1,is_starred=1 WHERE id=1", [])
             .unwrap();
+        for sql in [
+            "DROP TRIGGER folder_order_insert",
+            "DROP TRIGGER feed_order_insert",
+            "DROP TRIGGER feed_order_move",
+            "DROP TABLE feed_order",
+            "DROP TABLE folder_order",
+        ] {
+            c.execute(sql, []).unwrap();
+        }
         c.execute("DROP TABLE article_visits", []).unwrap();
         c.pragma_update(None, "user_version", 3).unwrap();
         drop(c);
