@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Validate resolved publication settings; never read the connector token."""
-import json, os, re, subprocess
+import argparse, json, re, subprocess, sys
 from urllib.parse import urlsplit
 
 def require(condition,message):
     if not condition:raise ValueError(message)
 
-def validate(config):
+def validate(config, token_mode='file'):
     services=config['services'];web=services['web'];tunnel=services['tunnel'];env=web['environment']
     require(not web.get('ports'), 'Web host ports must not be published')
     require(env['FEEDER_ACCESS_MODE']=='tunnel', 'Tunnel access mode is required')
@@ -16,13 +16,36 @@ def validate(config):
     image=tunnel['image']
     require(re.fullmatch(r'cloudflare/cloudflared(?::\d{4}\.\d+\.\d+|@sha256:[0-9a-f]{64})',image), 'Pin the official connector image by version or digest')
     require(tunnel['read_only'] and tunnel['cap_drop']==['ALL'], 'Connector privileges must be reduced')
-    require('--token-file' in tunnel['command'] and not tunnel.get('environment',{}).get('TUNNEL_TOKEN'), 'Token must come from secret file')
-    require({v['target'] for v in tunnel.get('secrets',[])}=={'tunnel-token'}, 'Connector secret mount missing')
+    tunnel_env=tunnel.get('environment',{})
+    if token_mode == 'file':
+        require('--token-file' in tunnel['command'] and not tunnel_env.get('TUNNEL_TOKEN'), 'Token must come from secret file')
+        require({v['target'] for v in tunnel.get('secrets',[])}=={'tunnel-token'}, 'Connector secret mount missing')
+    elif token_mode == 'env':
+        require(bool(tunnel_env.get('TUNNEL_TOKEN')), 'Tunnel token is required')
+        require('--token-file' not in tunnel['command'] and not tunnel.get('secrets'), 'Tunnel token sources must not be combined')
+        require(tunnel_env['TUNNEL_TOKEN'] not in tunnel['command'], 'Tunnel token must not be a command argument')
+    else:
+        raise ValueError('Unknown tunnel token mode')
     require(not services['worker'].get('ports'), 'Worker must not publish ports')
     return True
 
 if __name__=='__main__':
-    command=['docker','compose','--env-file','/dev/null','-f','compose.yml','-f','compose.tunnel.yml','config','--format','json']
-    config=json.loads(subprocess.check_output(command,text=True))
-    validate(config)
-    print('Tunnel configuration passed: unpublished origin, matching HTTPS Host, pinned connector and secret-file reference. Access policy/JWT enforcement still requires external acceptance.')
+    parser=argparse.ArgumentParser(description='Check tunnel settings without displaying token values.')
+    parser.add_argument('--token-mode', choices=('file','env'), default='file')
+    parser.add_argument('--env-file', help='Optional Compose env file; otherwise use the project .env')
+    args=parser.parse_args()
+    command=['docker','compose']
+    if args.env_file:
+        command.extend(['--env-file',args.env_file])
+    command.extend(['-f','compose.yml','-f', 'compose.tunnel.yml' if args.token_mode=='file' else 'compose.tunnel-env.yml','config','--format','json'])
+    result=subprocess.run(command,capture_output=True,text=True)
+    if result.returncode:
+        print('Compose configuration failed. Check required settings without sharing resolved output.',file=sys.stderr)
+        sys.exit(1)
+    try:
+        config=json.loads(result.stdout)
+        validate(config,args.token_mode)
+    except (ValueError, KeyError, TypeError):
+        print('Tunnel configuration is invalid. Check public origin, token mode and image settings.',file=sys.stderr)
+        sys.exit(1)
+    print(f'Tunnel configuration passed ({args.token_mode}): unpublished origin, matching HTTPS Host and pinned connector. Access policy/JWT enforcement still requires external acceptance.')

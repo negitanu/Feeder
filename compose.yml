@@ -13,6 +13,8 @@ services:
       FEEDER_ACCESS_MODE: local
       FEEDER_DEMO: ${FEEDER_DEMO:-0}
       FEEDER_ALLOWED_HOSTS: ${FEEDER_ALLOWED_HOSTS:-localhost:${FEEDER_PORT:-8080},127.0.0.1:${FEEDER_PORT:-8080},127.0.0.1:8080,web:8080}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ORCAROUTER_API_KEY: ${ORCAROUTER_API_KEY:-}
     ports:
       - "127.0.0.1:${FEEDER_PORT:-8080}:8080"
     volumes:
@@ -43,6 +45,8 @@ services:
     environment:
       FEEDER_DB: /data/feeder.sqlite3
       FEEDER_DEMO: "0"
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ORCAROUTER_API_KEY: ${ORCAROUTER_API_KEY:-}
     volumes:
       - feeder-data:/data
     user: "10001:10001"

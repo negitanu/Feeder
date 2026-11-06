@@ -1,0 +1,26 @@
+# Alternative to compose.tunnel.yml; do not combine the two tunnel overrides.
+# Configure Access and Protect with Access before starting the connector.
+services:
+  web:
+    ports: !reset []
+    environment:
+      FEEDER_ACCESS_MODE: tunnel
+      FEEDER_PUBLIC_ORIGIN: ${FEEDER_PUBLIC_ORIGIN:?Set the exact HTTPS public origin}
+      FEEDER_ALLOWED_HOSTS: ${FEEDER_PUBLIC_HOST:?Set the public Host authority},127.0.0.1:8080
+  tunnel:
+    image: ${FEEDER_TUNNEL_IMAGE:?Set a pinned cloudflared image}
+    command: [tunnel, --no-autoupdate, run]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set the Tunnel token in .env}
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 128
+    stop_grace_period: 30s
+    depends_on:
+      web:
+        condition: service_healthy
