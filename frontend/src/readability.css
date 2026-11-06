@@ -1,0 +1,10 @@
+.readability-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);min-width:0}
+.readability-panel h2{margin:0;font-size:15px}
+.readability-panel>p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.readability-control{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;font-size:12px;min-width:0}
+.readability-control output{color:var(--muted);font-variant-numeric:tabular-nums}
+.readability-control input{grid-column:1/-1;width:100%;min-width:0;accent-color:var(--accent)}
+.readability-reset{justify-self:start;border:1px solid var(--line);border-radius:7px;padding:8px 12px;background:var(--surface);color:var(--text);cursor:pointer}
+.readability-status{min-height:1.4em}
+.article-body{min-width:0;max-width:min(100%,var(--readability-max-width,70ch))}
+.article-text{font-size:var(--readability-font-size,14px);line-height:var(--readability-line-height,2.1)}
