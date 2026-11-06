@@ -2,6 +2,7 @@ mod collection;
 mod discovery;
 mod opml;
 mod reader;
+mod settings;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -59,7 +60,8 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
         let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if !objects.is_empty()
             && !(app_id == APP_ID
-                && ((version == 5 && collection::recognized_v5(&objects))
+                && ((version == 6 && settings::recognized_v6(&objects))
+                    || (version == 5 && collection::recognized_v5(&objects))
                     || (version == 4 && reader::recognized_v4(&objects))
                     || (version == 3 && collection::recognized_v3(&objects))
                     || (version == 2 && collection::recognized_v2(&objects))
@@ -82,7 +84,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     db.pragma_update(None, "foreign_keys", true)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if (1..=4).contains(&version) {
+    if (1..=5).contains(&version) {
         let backup_path = path.with_extension(format!("v{version}-backup.sqlite3"));
         if backup_path.exists() {
             return Err("database backup already exists; refusing to overwrite it".into());
@@ -107,7 +109,10 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     if version < 5 {
         collection::migrate_order(&tx)?;
     }
-    tx.pragma_update(None, "user_version", 5)?;
+    if version < 6 {
+        settings::migrate(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", 6)?;
     if demo {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
         if count == 0 {
@@ -226,6 +231,7 @@ fn app_with_hosts(db: Db, bind: SocketAddr, allowed: Option<Vec<String>>) -> Rou
         .merge(collection::routes())
         .merge(discovery::routes())
         .merge(opml::routes())
+        .merge(settings::routes())
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/articles", get(reader::list))
         .route("/api/articles/read-all", post(reader::read_all))
@@ -556,6 +562,7 @@ mod tests {
         ] {
             db.execute(sql, []).unwrap();
         }
+        db.execute("DROP TABLE reader_settings", []).unwrap();
         db.execute("DROP TABLE article_visits", []).unwrap();
         db.execute("DROP TABLE refresh_leases", []).unwrap();
         db.execute("DROP TABLE collection_settings", []).unwrap();

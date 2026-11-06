@@ -272,13 +272,20 @@ fn scope(db: &Connection, f: &Filters) -> Result<Scope, StatusCode> {
             v.push(term.into())
         }
     }
-    for (d, op) in [(&f.published_from, ">="), (&f.published_to, "<=")] {
+    let timezone = settings::read(db)?.display_timezone;
+    let offset = if timezone == "Asia/Tokyo" {
+        "+09:00"
+    } else {
+        "+00:00"
+    };
+    for (d, op) in [(&f.published_from, ">="), (&f.published_to, "<")] {
         if let Some(d) = d {
             if !date(d) {
                 return Err(StatusCode::BAD_REQUEST);
             }
-            c.push(format!("date(published) {op} date(?)"));
-            v.push(d.clone().into())
+            let modifier = if op == "<" { ", '+1 day'" } else { "" };
+            c.push(format!("julianday(published) {op} julianday(?{modifier})"));
+            v.push(format!("{d} 00:00:00{offset}").into())
         }
     }
     if f.published_from
@@ -738,6 +745,7 @@ mod tests {
         ] {
             c.execute(sql, []).unwrap();
         }
+        c.execute("DROP TABLE reader_settings", []).unwrap();
         c.execute("DROP TABLE article_visits", []).unwrap();
         c.pragma_update(None, "user_version", 3).unwrap();
         drop(c);
