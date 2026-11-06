@@ -1,0 +1,77 @@
+name: Verify
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path backend/Cargo.toml --check
+      - run: cargo test --manifest-path backend/Cargo.toml --locked
+      - run: cargo clippy --manifest-path backend/Cargo.toml --locked --all-targets -- -D warnings
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
+      - run: cargo build --manifest-path backend/Cargo.toml --locked
+      - run: npx --prefix frontend playwright install --with-deps chromium
+      - name: Browser smoke
+        run: |
+          FEEDER_DB="$RUNNER_TEMP/feeder-smoke.sqlite3" FEEDER_DEMO=1 backend/target/debug/feeder &
+          feeder_pid=$!
+          trap 'kill "$feeder_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/healthz; then break; fi
+            sleep 1
+          done
+          node scripts/browser-smoke.mjs
+          python3 tests/seed_collection_fixture.py "$RUNNER_TEMP/feeder-smoke.sqlite3"
+          node scripts/collection-browser-smoke.mjs
+          node scripts/onboarding-browser-smoke.mjs
+          FEEDER_DB="$RUNNER_TEMP/feeder-smoke.sqlite3" backend/target/debug/feeder worker --once
+
+  migration-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest scripts/test_inspect_legacy_db.py
+
+  linux-containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux backend tests
+        run: docker build --target backend-test .
+      - name: Build Linux runtime
+        run: docker compose --env-file /dev/null build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm --prefix frontend ci
+      - run: npx --prefix frontend playwright install --with-deps chromium
+      - name: Isolated Compose acceptance
+        run: FEEDER_BROWSER_SMOKE=1 FEEDER_PRODUCTIVITY_SMOKE=1 python3 scripts/container-smoke.py
