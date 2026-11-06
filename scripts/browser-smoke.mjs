@@ -1,3 +1,4 @@
+import {browserSession} from './browser-session.mjs';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('../frontend/package.json', import.meta.url));
@@ -7,7 +8,9 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto(process.env.FEEDER_URL || 'http://127.0.0.1:8080');
+  const origin=process.env.FEEDER_URL || 'http://127.0.0.1:8080';
+  await browserSession(page,origin);
+  await page.goto(origin);
   await page.locator('.article-card').first().waitFor();
   if (process.env.FEEDER_SCREENSHOT) await page.screenshot({ path: process.env.FEEDER_SCREENSHOT, fullPage: false });
   const firstTitle = await page.locator('.article-card strong').first().innerText();

@@ -1,3 +1,4 @@
+import { apiFetch } from './apiFetch'
 import { useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 export type Folder = { id: number; name: string }
@@ -27,7 +28,7 @@ export default function LibrarySidebar(p: Props) {
     if (savingRef.current || JSON.stringify(expected) === JSON.stringify(order)) return
     savingRef.current = true; setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/library/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected, order }) })
+      const response = await apiFetch('/api/library/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected, order }) })
       if (!response.ok) throw new Error(response.status === 409 ? '別の操作で構成が変わりました。最新の順序を読み込みました。' : '順序を保存できませんでした。再度お試しください。')
       const changed = order.feeds.filter(f => expected.feeds.find(old => old.id === f.id)?.folder_id !== f.folder_id)
       if (changed.length) p.onMembershipChanged(changed.flatMap(f => [f.folder_id,expected.feeds.find(old => old.id === f.id)!.folder_id]))

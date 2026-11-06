@@ -1,3 +1,4 @@
+import {browserSession} from './browser-session.mjs';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require=createRequire(new URL('../frontend/package.json',import.meta.url));
@@ -7,6 +8,7 @@ try {
  const page=await browser.newPage({viewport:{width:1280,height:800}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
+ await browserSession(page,origin);
  await page.goto(origin);
  await page.getByRole('button',{name:'集める',exact:true}).click();
  await page.getByRole('textbox',{name:'フォルダー名',exact:true}).fill('検証フォルダー');

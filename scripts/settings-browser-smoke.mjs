@@ -1,3 +1,4 @@
+import {browserSession} from './browser-session.mjs';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdir} from 'node:fs/promises';
@@ -8,6 +9,7 @@ const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
 try {
  const context=await browser.newContext({viewport:{width:1280,height:900},timezoneId:'America/Los_Angeles'}),page=await context.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
+ await browserSession(page,origin);
  const get=async path=>await(await page.request.get(origin+path)).json();
  const patch=async data=>await page.request.patch(origin+'/api/reader/settings',{data});
  assert.equal((await patch({display_timezone:'UTC',default_view:'all'})).status(),200);
@@ -35,7 +37,7 @@ try {
  const dl=page.waitForEvent('download'),exportResponse=page.waitForResponse(r=>r.url().endsWith('/api/configuration/export'));
  await page.getByRole('button',{name:'設定をエクスポート',exact:true}).click();const download=await dl,response=await exportResponse;assert.equal(response.status(),200);assert.match(response.headers()['cache-control'],/no-store/);assert.match(response.headers()['content-disposition'],/attachment/);assert.equal(download.suggestedFilename(),'feeder-settings.json');
  const chunks=[];for await(const chunk of await download.createReadStream())chunks.push(chunk);const bytes=Buffer.concat(chunks).toString('utf8'),data=JSON.parse(bytes);
- assert.equal(data.format,'feeder-settings');assert.equal(data.format_version,1);assert.equal(data.schema_version,6);assert.deepEqual(data.settings.reader,{display_timezone:'Asia/Tokyo',default_view:'unread'});assert.equal(data.settings.presentation.layout,'line');assert.equal(data.settings.presentation.appearance,'dark');assert.equal(data.settings.presentation.width,210);assert.ok(data.omissions.length>=2);assert.ok(Array.isArray(data.unsupported_sections));assert.ok(!bytes.includes(canary));assert.ok(!bytes.includes('これは Feeder の表示を確認'));assert.ok(!bytes.includes('last_error'));assert.deepEqual(await get('/api/library'),libraryBefore);assert.deepEqual(await get('/api/articles?limit=100'),articlesBefore);assert.deepEqual(await get('/api/articles?history=true&limit=100'),historyBefore);assert.deepEqual(await get('/api/collection/settings'),collectionBefore);
+ assert.equal(data.format,'feeder-settings');assert.equal(data.format_version,1);assert.equal(data.schema_version,7);assert.deepEqual(data.settings.reader,{display_timezone:'Asia/Tokyo',default_view:'unread'});assert.equal(data.settings.presentation.layout,'line');assert.equal(data.settings.presentation.appearance,'dark');assert.equal(data.settings.presentation.width,210);assert.ok(data.omissions.length>=2);assert.ok(Array.isArray(data.unsupported_sections));assert.ok(!bytes.includes(canary));assert.ok(!bytes.includes('これは Feeder の表示を確認'));assert.ok(!bytes.includes('last_error'));assert.deepEqual(await get('/api/library'),libraryBefore);assert.deepEqual(await get('/api/articles?limit=100'),articlesBefore);assert.deepEqual(await get('/api/articles?history=true&limit=100'),historyBefore);assert.deepEqual(await get('/api/collection/settings'),collectionBefore);
  assert.deepEqual(data.settings.folders.map(f=>f.id),libraryBefore.folders.map(f=>f.id));assert.deepEqual(data.settings.subscriptions.map(f=>f.id),libraryBefore.feeds.map(f=>f.id));
  const invalid=await page.request.post(origin+'/api/configuration/export',{data:{presentation:{appearance:'dark',width:999,layout:'line',collapsed_folders:[]}}});assert.ok(invalid.status()>=400);assert.doesNotMatch(invalid.headers()['content-disposition']||'',/attachment/);
  assert.equal((await patch({display_timezone:'Europe/London'})).status(),400);assert.equal((await page.request.patch(origin+'/api/reader/settings',{headers:{Origin:'https://attacker.invalid'},data:{default_view:'all'}})).status(),403);

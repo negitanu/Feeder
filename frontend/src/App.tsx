@@ -1,5 +1,7 @@
+import { apiFetch } from './apiFetch'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CollectionPanel from './CollectionPanel'
+import ApiKeysPanel from './ApiKeysPanel'
 import LibrarySidebar from './LibrarySidebar'
 import type { Folder, Feed } from './LibrarySidebar'
 import SidebarWidth from './SidebarWidth'
@@ -14,7 +16,7 @@ const PAGE_SIZE = 24
 function savedFolders(): number[] { try { const value = JSON.parse(localStorage.getItem('feeder-collapsed-folders') || '[]'); return Array.isArray(value) ? value.filter(Number.isInteger) : [] } catch { return [] } }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
+  const response = await apiFetch(url, init)
   if (!response.ok) throw new Error(response.status === 404 ? '記事が見つかりません。' : response.status === 400 || response.status === 422 ? '検索条件または選択した記事を確認してください。' : '通信に失敗しました。時間をおいて再度お試しください。')
   return response.json() as Promise<T>
 }
@@ -200,7 +202,7 @@ function App() {
   }
   async function mutate(url: string, init: RequestInit, reload = true) {
     setBusy(true); setLibraryError('')
-    try { const response = await fetch(url, init); if (!response.ok) throw new Error(response.status === 404 ? '見つかりません。' : '操作に失敗しました。時間をおいて再度お試しください。'); if (reload) { await loadLibrary(); setRefreshVersion(value => value + 1) } return true }
+    try { const response = await apiFetch(url, init); if (!response.ok) throw new Error(response.status === 404 ? '見つかりません。' : '操作に失敗しました。時間をおいて再度お試しください。'); if (reload) { await loadLibrary(); setRefreshVersion(value => value + 1) } return true }
     catch (e) { setLibraryError((e as Error).message); return false }
     finally { setBusy(false) }
   }
@@ -224,7 +226,7 @@ function App() {
         {([['all', 'すべて', '▤'], ['unread', '未読', '◉'], ['starred', 'スター付き', '☆'], ['recent', '最近読んだ記事', '◷']] as [Filter, string, string][]).map(([key, label, icon]) => <button key={key} className={`filter ${filter === key ? 'active' : ''}`} onClick={() => { initialViewChosen.current = true; setFilter(key); setSource(null); setSelected(null); setPage('read'); if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={filter === key ? 'page' : undefined}><span className="filter-icon">{icon}</span>{label}{key === 'all' && <span className="count">{total}</span>}</button>)}
       </nav><LibrarySidebar folders={folders} feeds={feeds} source={source} collapsed={collapsed} onToggle={id => setCollapsed(current => current.includes(id) ? current.filter(value => value !== id) : [...current,id])} onSelect={selectSource} onEditFeed={setEditingFeed} onEditFolder={setEditingFolder} onMutate={mutate} onReload={loadLibrary} onMembershipChanged={ids => { if (source?.kind === 'folder' && ids.includes(source.id)) { setSelectedIds([]); setRefreshVersion(value => value + 1) } }} />{libraryError && <div className="sidebar-error" role="alert">{libraryError}</div>}</aside>
       <main className="main-area">
-        {page === 'collect' && <><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /><ReaderSettingsPanel settings={readerSettings} presentation={{ appearance: theme, width: Math.round(sidebarWidth), layout, collapsed_folders: [...new Set(collapsed.filter(id => id > 0 && folders.some(folder => folder.id === id)))].slice(0,2000) }} onSaved={settingsSaved} onLayout={setLayout} onTheme={setTheme} onRetry={() => void loadReaderSettings()} />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
+        {page === 'collect' && <><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /><ReaderSettingsPanel settings={readerSettings} presentation={{ appearance: theme, width: Math.round(sidebarWidth), layout, collapsed_folders: [...new Set(collapsed.filter(id => id > 0 && folders.some(folder => folder.id === id)))].slice(0,2000) }} onSaved={settingsSaved} onLayout={setLayout} onTheme={setTheme} onRetry={() => void loadReaderSettings()} /><ApiKeysPanel />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
         {page === 'read' && <>
         {selected && <section className="article-detail" aria-label="記事の詳細">
           <div className="detail-toolbar"><button className="back-button" onClick={() => setSelected(null)}>← <span>一覧に戻る</span></button><button onClick={() => void updateState(selected, { read: !selected.is_read })}>{selected.is_read ? '未読にする' : '既読にする'}</button><button className={`icon-button star-button ${selected.is_starred ? 'is-starred' : ''}`} aria-label={selected.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={selected.is_starred} onClick={() => void updateState(selected, { starred: !selected.is_starred })}>{selected.is_starred ? '★' : '☆'}</button></div>

@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {mkdir} from 'node:fs/promises';
+import {browserSession} from './browser-session.mjs';
+const require=createRequire(new URL('../frontend/package.json',import.meta.url));
+const {chromium,request}=require('@playwright/test');
+const browser=await chromium.launch({headless:true});
+const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
+try {
+ const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await browserSession(page,origin);
+ const anonymous=await request.newContext();
+ const noKey=await anonymous.get(origin+'/api/v1/articles');assert.equal(noKey.status(),401);assert.match(noKey.headers()['www-authenticate'],/Bearer/);
+ assert.equal((await page.request.get(origin+'/api/v1/articles')).status(),401,'Browser cookies must not authenticate public API');
+ const articles=await(await page.request.get(origin+'/api/articles?limit=100')).json(),id=articles.items[0].id;
+ assert.equal((await anonymous.post(origin+`/api/articles/${id}/state`,{data:{read:false}})).status(),403);
+ assert.equal((await page.request.post(origin+`/api/articles/${id}/state`,{headers:{'X-Feeder-CSRF':''},data:{read:false}})).status(),403);
+ assert.equal((await page.request.post(origin+`/api/articles/${id}/state`,{headers:{Origin:'https://attacker.invalid'},data:{read:false}})).status(),403);
+ await page.goto(origin);await page.getByRole('button',{name:'集める',exact:true}).click();await page.getByRole('heading',{name:'APIキー',exact:true}).waitFor();
+ await page.getByRole('textbox',{name:'APIキー名',exact:true}).fill('検証読み取り');await page.getByRole('button',{name:'APIキーを発行',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor();const readToken=await page.getByLabel('発行したAPIキー',{exact:true}).innerText();
+ const readHeaders={Authorization:'Bearer '+readToken};
+ const list=await anonymous.get(origin+'/api/v1/articles?after_id=0&limit=2',{headers:readHeaders});assert.equal(list.status(),200);const first=await list.json();assert.equal(first.data.length,2);assert.ok(first.data[0].id<first.data[1].id);
+ const next=await(await anonymous.get(origin+'/api/v1/articles?after_id='+first.data.at(-1).id+'&limit=2',{headers:readHeaders})).json();assert.ok(next.data.every(a=>a.id>first.data.at(-1).id));
+ assert.equal((await anonymous.patch(origin+`/api/v1/articles/${id}`,{headers:readHeaders,data:{is_read:false}})).status(),403);
+ const metadata=await(await page.request.get(origin+'/api/keys')).text();assert.ok(!metadata.includes(readToken));assert.ok(!metadata.includes('token_hash'));
+ await page.getByRole('button',{name:'キーを隠す',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor({state:'hidden'});await page.reload();await page.getByRole('button',{name:'集める',exact:true}).click();assert.equal(await page.getByLabel('発行したAPIキー',{exact:true}).count(),0);
+ await page.getByRole('textbox',{name:'APIキー名',exact:true}).fill('検証書き込み');await page.getByRole('combobox',{name:'APIキーの権限',exact:true}).selectOption('write');await page.getByRole('button',{name:'APIキーを発行',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor();const writeToken=await page.getByLabel('発行したAPIキー',{exact:true}).innerText(),writeHeaders={Authorization:'Bearer '+writeToken};
+ const historyBefore=await(await page.request.get(origin+'/api/articles?history=true&limit=100')).json();const state=articles.items[0];
+ assert.equal((await anonymous.patch(origin+`/api/v1/articles/${id}`,{headers:writeHeaders,data:{is_read:state.is_read,is_starred:state.is_starred}})).status(),200);
+ assert.deepEqual(await(await page.request.get(origin+'/api/articles?history=true&limit=100')).json(),historyBefore);
+ assert.equal((await anonymous.post(origin+'/api/keys',{headers:writeHeaders,data:{name:'notallowed',scope:'write',days:1}})).status(),403);
+ const exported=await page.request.post(origin+'/api/configuration/export',{data:{presentation:{appearance:'system',width:250,layout:'standard',collapsed_folders:[]}}});const bytes=await exported.text();assert.ok(!bytes.includes(readToken)&&!bytes.includes(writeToken)&&!bytes.includes('token_hash'));
+ await page.getByRole('textbox',{name:'APIキー名',exact:true}).fill('検証上限');await page.getByRole('combobox',{name:'APIキーの権限',exact:true}).selectOption('read');const rateIssued=page.waitForResponse(r=>r.url().endsWith('/api/keys')&&r.request().method()==='POST');await page.getByRole('button',{name:'APIキーを発行',exact:true}).click();await rateIssued;await page.getByLabel('発行したAPIキー',{exact:true}).waitFor();const rateToken=await page.getByLabel('発行したAPIキー',{exact:true}).innerText();
+ await page.getByRole('spinbutton',{name:'APIリクエスト上限',exact:true}).fill('1');const rateSaved=page.waitForResponse(r=>r.url().endsWith('/api/keys/settings')&&r.request().method()==='PATCH');await page.getByRole('button',{name:'API上限を保存',exact:true}).click();assert.equal((await rateSaved).status(),200);
+ const rateHeaders={Authorization:'Bearer '+rateToken};assert.equal((await anonymous.get(origin+'/api/v1/feeds',{headers:rateHeaders})).status(),200);const limited=await anonymous.get(origin+'/api/v1/feeds',{headers:rateHeaders});assert.equal(limited.status(),429);assert.ok(Number(limited.headers()['retry-after'])>=1);
+ await page.getByRole('spinbutton',{name:'APIリクエスト上限',exact:true}).fill('120');const reset=page.waitForResponse(r=>r.url().endsWith('/api/keys/settings')&&r.request().method()==='PATCH');await page.getByRole('button',{name:'API上限を保存',exact:true}).click();await reset;
+ page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'検証読み取りを失効',exact:true}).click();await page.getByRole('button',{name:'検証読み取りを失効',exact:true}).waitFor({state:'hidden'});assert.equal((await anonymous.get(origin+'/api/v1/articles',{headers:readHeaders})).status(),401);
+ await page.setViewportSize({width:390,height:844});await page.getByRole('heading',{name:'APIキー',exact:true}).scrollIntoViewIfNeeded();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ if(process.env.FEEDER_SCREENSHOT_DIR){await mkdir(process.env.FEEDER_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:process.env.FEEDER_SCREENSHOT_DIR+'/api-keys-mobile.png'});}
+ assert.deepEqual(errors,[]);await anonymous.dispose();console.log('Access browser passed: CSRF rejection, one-time issuance, Bearer separation/scopes, ID continuation, history preservation, key administration isolation, export omission, rate limiting, revocation and mobile.');
+}finally{await browser.close();}

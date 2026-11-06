@@ -1,3 +1,4 @@
+import { apiFetch } from './apiFetch'
 import { useEffect, useRef, useState } from 'react'
 
 type Folder = { id: number; name: string }
@@ -7,7 +8,7 @@ type Settings = { enabled: boolean; interval_seconds: number }
 type OpmlPreview = { items: { url: string; title: string; folder: string | null; status: string }[]; valid: number; new: number; existing: number; duplicates: number; invalid: number }
 
 async function api<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
-  const response = await fetch(path, { method, credentials: 'same-origin', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) })
+  const response = await apiFetch(path, { method, credentials: 'same-origin', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) })
   if (!response.ok) {
     let message = response.status === 400 ? '入力内容を確認してください。取得先は公開 HTTP/HTTPS URL に限ります。' : response.status === 403 ? '確認情報が無効か期限切れです。もう一度プレビューしてください。' : response.status === 409 ? '登録済みか、別の更新処理が実行中です。' : '取得または保存に失敗しました。接続先と入力内容を確認し、再試行してください。'
     try { const data = await response.json(); if (data.error) message = data.error } catch { /* Use the generic message. */ }

@@ -1,3 +1,4 @@
+import { apiFetch } from './apiFetch'
 import { useEffect, useRef, useState } from 'react'
 export type ReaderSettings = { display_timezone: 'UTC' | 'Asia/Tokyo'; default_view: 'all' | 'unread' | 'starred' }
 export type Layout = 'standard' | 'line' | 'tiles'
@@ -16,7 +17,7 @@ export default function ReaderSettingsPanel({ settings, presentation, onSaved, o
   async function save(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError(''); setNotice('')
     try {
-      const response = await fetch('/api/reader/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) })
+      const response = await apiFetch('/api/reader/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) })
       if (!response.ok) throw new Error('表示設定を保存できませんでした。入力内容と接続を確認してください。')
       const result: ReaderSettings = await response.json()
       onSaved(result)
@@ -26,7 +27,7 @@ export default function ReaderSettingsPanel({ settings, presentation, onSaved, o
   async function download() {
     setExporting(true); setError(''); setNotice('')
     try {
-      const response = await fetch('/api/configuration/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presentation }) })
+      const response = await apiFetch('/api/configuration/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presentation }) })
       if (!response.ok) throw new Error('設定を書き出せませんでした。接続を確認して再度お試しください。')
       const content = await response.blob()
       const result = JSON.parse(await content.text()) as { omissions: unknown[] }
