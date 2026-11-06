@@ -1,0 +1,2 @@
+## Design
+Store a versioned array of bounded names and validated reader snapshots in localStorage. Include committed query, view, source and detailed filters; omit cursors, article data and selected IDs. Applying clears current detail through the existing filter generation path. Deleted sources are reported rather than silently broadening results. Storage denied keeps the current session usable and reports lack of persistence.

@@ -77,6 +77,8 @@ try:
         subprocess.run(['node','scripts/settings-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_ACCESS_SMOKE')=='1':
         subprocess.run(['node','scripts/access-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    if env.get('FEEDER_SAVED_SEARCH_SMOKE')=='1':
+        subprocess.run(['node','scripts/saved-search-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     api_keys_snapshot=json.loads(request('/api/keys')[1])
     api_rate_snapshot=json.loads(request('/api/keys/settings')[1])
     reader_settings_snapshot=json.loads(request('/api/reader/settings')[1])
