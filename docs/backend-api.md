@@ -20,7 +20,7 @@ Recognized version 1 databases are copied using SQLite's backup API to a sibling
 - `POST /api/discover`: `{url}` returns `{candidates:[{url,title}]}` with up to eight unique RSS/Atom alternate links resolved against the final site URL. A direct feed is itself a candidate.
 - `POST /api/preview`: `{url}` returns `{token,url,title,entries:[{title,url}],expires_in}` with up to five entries. It does not write subscriptions. The response sets an HttpOnly SameSite cookie when needed; keep that cookie for confirmation.
 - `POST /api/preview/confirm`: `{token,folder_id?}` consumes the single-use, session-bound plan and refetches before creating the subscription. Plans expire after 900 seconds, are held in bounded server memory and disappear on restart. Invalid, expired, reused or cross-session plans fail.
-- `GET /api/collection/settings` and `PATCH /api/collection/settings` read or update `{enabled,interval_seconds}`. Collection defaults to disabled, with a 900-second interval; accepted intervals are 60–86400 seconds.
+- `GET /api/collection/settings` and `PATCH /api/collection/settings` read or update `{enabled,interval_seconds}`. New collection settings default to enabled, with a 900-second interval; existing disabled settings are preserved; accepted intervals are 60–86400 seconds.
 
 Run `feeder worker` separately with the same `FEEDER_DB` to schedule due, unpaused feeds. `feeder worker --once` processes one pass and exits. Disabling collection prevents new scheduled refreshes; an in-flight fetch can finish. Per-feed database leases prevent simultaneous manual and worker refreshes and expire after 60 seconds. Pausing a feed while a fetch is in flight prevents applying its result.
 

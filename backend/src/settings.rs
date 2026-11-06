@@ -523,7 +523,7 @@ mod tests {
             db.query_row("SELECT enabled FROM collection_settings", [], |r| r
                 .get::<_, i64>(0))
                 .unwrap(),
-            0
+            1
         );
     }
     #[tokio::test]

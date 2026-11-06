@@ -363,7 +363,7 @@ async fn import(
             None
         };
         tx.execute(
-            "INSERT INTO feeds(url,title,folder_id,paused) VALUES (?,?,?,1)",
+            "INSERT INTO feeds(url,title,folder_id,paused) VALUES (?,?,?,0)",
             params![
                 url,
                 if title.trim().is_empty() {
@@ -485,7 +485,7 @@ mod tests {
         assert!(safe_url("http://localhost/feed").is_none());
     }
     #[tokio::test]
-    async fn preview_and_import_are_explicit_and_paused() {
+    async fn preview_and_import_are_explicit_and_collection_ready() {
         use tower::ServiceExt;
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute(SCHEMA, []).unwrap();
@@ -494,7 +494,8 @@ mod tests {
             collection::migrate(&tx).unwrap();
             tx.commit().unwrap();
         }
-        let app = routes().with_state(Arc::new(Mutex::new(conn)));
+        let state = Arc::new(Mutex::new(conn));
+        let app = routes().with_state(state.clone());
         let body = serde_json::json!({"xml":XML}).to_string();
         let request = || {
             axum::http::Request::builder()
@@ -519,6 +520,48 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        {
+            let db = state.lock().unwrap();
+            assert_eq!(
+                db.query_row("SELECT paused FROM feeds", [], |r| r.get::<_, bool>(0))
+                    .unwrap(),
+                false
+            );
+            assert_eq!(
+                db.query_row("SELECT enabled FROM collection_settings", [], |r| r
+                    .get::<_, bool>(0))
+                    .unwrap(),
+                true
+            );
+            db.execute("UPDATE feeds SET paused=1", []).unwrap();
+            db.execute("UPDATE collection_settings SET enabled=0", [])
+                .unwrap();
+        }
+        let duplicate = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/opml/import")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(duplicate.status(), StatusCode::OK);
+        {
+            let db = state.lock().unwrap();
+            assert!(
+                db.query_row("SELECT paused FROM feeds", [], |r| r.get::<_, bool>(0))
+                    .unwrap()
+            );
+            assert!(
+                !db.query_row("SELECT enabled FROM collection_settings", [], |r| r
+                    .get::<_, bool>(0))
+                    .unwrap()
+            );
+        }
         let response = app.clone().oneshot(request()).await.unwrap();
         let bytes = axum::body::to_bytes(response.into_body(), MAX_XML)
             .await

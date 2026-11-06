@@ -1,0 +1,2 @@
+## Design
+Use a numeric-keyboard text field with a string draft, accepting only integer seconds in 60..86400 at save. Keep invalid/empty drafts editable, disable save and provide guidance. Sync draft after load/save without overriding dirty edits. New collection settings rows explicitly store enabled=1 while retaining the recognized schema definition for existing databases. OPML inserts paused=0 for new rows only; existing feeds and collection flags are untouched. Show import guidance that the worker will collect only when the global switch is enabled.

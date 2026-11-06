@@ -25,7 +25,7 @@ Feeder SHALL persist an explicit collection switch and interval, refresh only du
 Feeder SHALL preview bounded OPML, require explicit import and export escaped subscriptions without secrets or article data.
 #### Scenario: Repeated import
 - **WHEN** OPML containing existing or repeated URLs is imported
-- **THEN** valid new subscriptions are added once in paused state and the result reports skipped and invalid entries
+- **THEN** valid new subscriptions are added once in unpaused state and the result reports skipped and invalid entries
 #### Scenario: Unsafe XML
 - **WHEN** OPML includes entity declarations, excessive size or excessive nesting
 - **THEN** it is rejected without database writes or remote access

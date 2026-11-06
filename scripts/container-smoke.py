@@ -69,6 +69,8 @@ try:
     if env.get('FEEDER_BROWSER_SMOKE')=='1':
         subprocess.run(['node','scripts/browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
         subprocess.run(['node','scripts/detail-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    if env.get('FEEDER_ONBOARDING_SMOKE')=='1':
+        subprocess.run(['node','scripts/onboarding-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_PRODUCTIVITY_SMOKE')=='1':
         subprocess.run(['node','scripts/productivity-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_SIDEBAR_SMOKE')=='1':
@@ -81,6 +83,7 @@ try:
         subprocess.run(['node','scripts/saved-search-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_READABILITY_SMOKE')=='1':
         subprocess.run(['node','scripts/readability-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    collection_settings_snapshot=json.loads(request('/api/collection/settings')[1])
     api_keys_snapshot=json.loads(request('/api/keys')[1])
     api_rate_snapshot=json.loads(request('/api/keys/settings')[1])
     reader_settings_snapshot=json.loads(request('/api/reader/settings')[1])
@@ -100,7 +103,7 @@ try:
     csrf=json.loads(request('/api/session')[1])['csrf_token']
     assert json.loads(request('/api/keys')[1])==api_keys_snapshot
     assert json.loads(request('/api/keys/settings')[1])==api_rate_snapshot
-    assert json.loads(request('/api/collection/settings')[1])=={'enabled':False,'interval_seconds':120}
+    assert json.loads(request('/api/collection/settings')[1])==collection_settings_snapshot
     subprocess.run([*restore_compose,'down','--volumes','--remove-orphans','--timeout','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restore_created=False
     cmd('up','--no-build','-d','--force-recreate','--wait','--wait-timeout','90','web','worker')
@@ -112,7 +115,7 @@ try:
     csrf=json.loads(request('/api/session')[1])['csrf_token']
     assert json.loads(request('/api/keys')[1])==api_keys_snapshot
     assert json.loads(request('/api/keys/settings')[1])==api_rate_snapshot
-    status,body=request('/api/collection/settings');assert status==200 and json.loads(body)=={'enabled':False,'interval_seconds':120}
+    status,body=request('/api/collection/settings');assert status==200 and json.loads(body)==collection_settings_snapshot
     cmd('stop','--timeout','30','worker')
     worker_id=cmd('ps','--all','--quiet','worker')
     info=json.loads(subprocess.check_output(['docker','inspect',worker_id],text=True))[0]

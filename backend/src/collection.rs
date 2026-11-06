@@ -38,7 +38,10 @@ pub fn migrate(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
     }
     if version < 3 {
         tx.execute(SETTINGS, [])?;
-        tx.execute("INSERT INTO collection_settings(id) VALUES (1)", [])?;
+        tx.execute(
+            "INSERT INTO collection_settings(id,enabled) VALUES (1,1)",
+            [],
+        )?;
         tx.execute(LEASES, [])?;
     }
     Ok(())
@@ -1360,6 +1363,8 @@ mod tests {
         let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
         {
             let c = db.lock().unwrap();
+            c.execute("UPDATE collection_settings SET enabled=0", [])
+                .unwrap();
             c.execute(
                 "INSERT INTO feeds(url,title) VALUES ('http://127.0.0.1/','test')",
                 [],

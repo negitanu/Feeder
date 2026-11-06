@@ -609,7 +609,7 @@ mod tests {
                 |r| Ok((r.get::<_, bool>(0)?, r.get::<_, i64>(1)?))
             )
             .unwrap(),
-            (false, 900)
+            (true, 900)
         );
         drop(db);
         assert!(open_db(&path, false).is_ok());

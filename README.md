@@ -59,7 +59,7 @@ docker compose run --rm --no-deps worker worker --once
 
 停止中の購読と、直前に確認済みの購読はスキップします。全体無効化で新規取得を止めますが、実行中の上限付き取得は完了する場合があります。workerは30秒ごとに期限を確認し、一巡で最大100購読を処理します。手動更新とworkerはDB上のリースで同時取得を防ぎます。
 
-OPMLファイルは1 MiBまで、1000 outline・16階層までです。ファイル選択で内容を確認し、「確認して読み込む」で追加します。既存・重複・無効を区別し、新規購読は停止状態で追加されます。再開は左ペインの「⋯」から行います。書き出しは購読とフォルダーを含み、記事や認証キーは含みません。[形式と制限](docs/opml.md)。
+OPMLファイルは1 MiBまで、1000 outline・16階層までです。ファイル選択で内容を確認し、「確認して読み込む」で追加します。既存・重複・無効を区別し、新規購読は自動収集対象として追加されます。全体の自動収集が無効な場合は設定で有効にしてください。停止・再開は購読管理から行えます。書き出しは購読とフォルダーを含み、記事や認証キーは含みません。[形式と制限](docs/opml.md)。
 
 ブラウザ回帰は専用生成DBで `browser-smoke.mjs` → `tests/seed_collection_fixture.py DB_PATH` → `collection-browser-smoke.mjs` → `onboarding-browser-smoke.mjs` の順に実行します。公開接続を使う検証は明示的に `FEEDER_LIVE_FEED=https://go.dev/blog/feed.atom node scripts/live-discovery-smoke.mjs` を実行してください。
 
