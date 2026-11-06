@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CollectionPanel from './CollectionPanel'
+import LibrarySidebar from './LibrarySidebar'
+import type { Folder, Feed } from './LibrarySidebar'
+import SidebarWidth from './SidebarWidth'
 
 type Article = { id: number; title: string; content: string; url: string; published: string; is_read: boolean; is_starred: boolean; last_visited?: string | null }
 type Filter = 'all' | 'unread' | 'starred' | 'recent'
 type AppliedFilters = { q?: string; unread?: boolean; starred?: boolean; history?: boolean; order: 'new' | 'old' | 'recent'; scope: 'both' | 'title' | 'body'; any?: string; exclude?: string; published_from?: string; published_to?: string; feed_id?: number; folder_id?: number; feed_ids?: string }
 type Theme = 'light' | 'dark' | 'system'
-type Folder = { id: number; name: string }
-type Feed = { id: number; title: string; url: string; folder_id: number | null; paused: boolean; last_error?: string | null; last_checked?: string | null }
 const PAGE_SIZE = 24
 function savedFolders(): number[] { try { const value = JSON.parse(localStorage.getItem('feeder-collapsed-folders') || '[]'); return Array.isArray(value) ? value.filter(Number.isInteger) : [] } catch { return [] } }
 
@@ -28,7 +29,6 @@ function App() {
   const [collapsed, setCollapsed] = useState<number[]>(savedFolders)
   const [busy, setBusy] = useState(false)
   const [refreshVersion, setRefreshVersion] = useState(0)
-  const [menuFeed, setMenuFeed] = useState<number | null>(null)
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null)
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
   const [query, setQuery] = useState('')
@@ -182,7 +182,6 @@ function App() {
   }
   const json = (body: unknown): RequestInit => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   function selectSource(value: { kind: 'feed' | 'folder'; id: number } | null) { setSource(value); setPage('read'); setSelected(null) }
-  function feedRow(feed: Feed) { return <div className="folder-row feed-row" key={feed.id} onContextMenu={e => { e.preventDefault(); setMenuFeed(feed.id) }}><button className={`source-button feed-source ${source?.kind === 'feed' && source.id === feed.id ? 'active' : ''}`} onClick={() => selectSource({ kind: 'feed', id: feed.id })}>◌ <span>{feed.title || feed.url}</span>{feed.paused && <small>停止中</small>}</button><button className="mini-menu" aria-label={`${feed.title || feed.url}の操作`} onClick={() => setMenuFeed(menuFeed === feed.id ? null : feed.id)}>⋯</button>{menuFeed === feed.id && <div className="feed-menu"><button onClick={() => { setEditingFeed(feed); setMenuFeed(null) }}>編集</button><button onClick={() => { void mutate(`/api/feeds/${feed.id}`, { method: 'PATCH', ...json({ paused: !feed.paused }) }); setMenuFeed(null) }}>{feed.paused ? '再開' : '一時停止'}</button><button onClick={() => { void mutate(`/api/feeds/${feed.id}/refresh`, { method: 'POST' }); setMenuFeed(null) }}>今すぐ更新</button><button className="danger" onClick={() => { if (window.confirm(`「${feed.title || feed.url}」を削除しますか？このフィードの記事も削除されます。`)) void mutate(`/api/feeds/${feed.id}`, { method: 'DELETE' }); setMenuFeed(null) }}>削除</button></div>}</div> }
   const date = (value: string) => {
     const d = new Date(value)
     return Number.isNaN(d.getTime()) ? value : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium' }).format(d)
@@ -195,10 +194,10 @@ function App() {
       <form className="search" onSubmit={submitSearch} role="search"><span aria-hidden="true">⌕</span><input aria-label="記事を検索" placeholder="記事を検索..." value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" aria-label="検索">検索</button></form>
       <label className="theme-control"><span className="sr-only">テーマ</span><select aria-label="テーマ" value={theme} onChange={e => setTheme(e.target.value as Theme)}><option value="system">システム</option><option value="light">ライト</option><option value="dark">ダーク</option></select><span aria-hidden="true">◐</span></label>
     </header>
-    <div className="workspace">
-      <aside className="sidebar" aria-label="記事フィルター"><div className="side-heading">ライブラリ</div><nav className="filters">
+    <SidebarWidth>
+      <aside id="reader-sidebar" className="sidebar" aria-label="記事フィルター"><div className="side-heading">ライブラリ</div><nav className="filters">
         {([['all', 'すべて', '▤'], ['unread', '未読', '◉'], ['starred', 'スター付き', '☆'], ['recent', '最近読んだ記事', '◷']] as [Filter, string, string][]).map(([key, label, icon]) => <button key={key} className={`filter ${filter === key ? 'active' : ''}`} onClick={() => { setFilter(key); setSource(null); setSelected(null); setPage('read'); if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={filter === key ? 'page' : undefined}><span className="filter-icon">{icon}</span>{label}{key === 'all' && <span className="count">{total}</span>}</button>)}
-      </nav><div className="side-heading source-heading">フォルダー</div><nav className="source-list">{folders.map(folder => { const folderFeeds = feeds.filter(f => f.folder_id === folder.id); const isCollapsed = collapsed.includes(folder.id); return <div className="folder-group" key={folder.id}><div className="folder-row" onContextMenu={e => { e.preventDefault(); setEditingFolder(folder) }}><button className="folder-toggle" aria-label={`${folder.name}を${isCollapsed ? '展開' : '折りたたむ'}`} onClick={() => setCollapsed(current => isCollapsed ? current.filter(id => id !== folder.id) : [...current, folder.id])}>{isCollapsed ? '▸' : '▾'}</button><button className={`source-button ${source?.kind === 'folder' && source.id === folder.id ? 'active' : ''}`} onClick={() => selectSource({ kind: 'folder', id: folder.id })}>▰ <span>{folder.name}</span></button><button className="mini-menu" aria-label={`${folder.name}を編集`} onClick={() => setEditingFolder(folder)}>⋯</button></div>{!isCollapsed && folderFeeds.map(feedRow)}</div> })}</nav><div className="side-heading source-heading">フィード</div><nav className="source-list">{feeds.filter(f => f.folder_id === null).map(feedRow)}</nav>{libraryError && <div className="sidebar-error" role="alert">{libraryError}</div>}</aside>
+      </nav><LibrarySidebar folders={folders} feeds={feeds} source={source} collapsed={collapsed} onToggle={id => setCollapsed(current => current.includes(id) ? current.filter(value => value !== id) : [...current,id])} onSelect={selectSource} onEditFeed={setEditingFeed} onEditFolder={setEditingFolder} onMutate={mutate} onReload={loadLibrary} onMembershipChanged={ids => { if (source?.kind === 'folder' && ids.includes(source.id)) { setSelectedIds([]); setRefreshVersion(value => value + 1) } }} />{libraryError && <div className="sidebar-error" role="alert">{libraryError}</div>}</aside>
       <main className="main-area">
         {page === 'collect' && <><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
         {page === 'read' && <>
@@ -228,7 +227,7 @@ function App() {
         {editingFeed && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setEditingFeed(null) }}><form role="dialog" aria-modal="true" aria-labelledby="feed-edit-title" className="edit-dialog" onSubmit={async e => { e.preventDefault(); if (await mutate(`/api/feeds/${editingFeed.id}`, { method: 'PATCH', ...json({ title: editingFeed.title, folder_id: editingFeed.folder_id }) })) setEditingFeed(null) }}><h2 id="feed-edit-title">フィードを編集</h2>{libraryError && <p role="alert">{libraryError}</p>}<label>表示名<input value={editingFeed.title} onChange={e => setEditingFeed({ ...editingFeed, title: e.target.value })} /></label><label>フォルダー<select value={editingFeed.folder_id ?? ''} onChange={e => setEditingFeed({ ...editingFeed, folder_id: e.target.value ? Number(e.target.value) : null })}><option value="">フォルダーなし</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label><div className="dialog-actions"><button type="button" onClick={() => setEditingFeed(null)}>キャンセル</button><button disabled={busy}>保存</button></div></form></div>}
         {editingFolder && <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setEditingFolder(null) }}><form role="dialog" aria-modal="true" aria-labelledby="folder-edit-title" className="edit-dialog" onSubmit={async e => { e.preventDefault(); if (await mutate(`/api/folders/${editingFolder.id}`, { method: 'PATCH', ...json({ name: editingFolder.name }) })) setEditingFolder(null) }}><h2 id="folder-edit-title">フォルダーを編集</h2>{libraryError && <p role="alert">{libraryError}</p>}<label>名前<input value={editingFolder.name} onChange={e => setEditingFolder({ ...editingFolder, name: e.target.value })} /></label><div className="dialog-actions"><button type="button" onClick={() => setEditingFolder(null)}>キャンセル</button><button disabled={busy}>保存</button><button type="button" className="danger" onClick={() => { if (window.confirm(`「${editingFolder.name}」を削除しますか？中のフィードはフォルダーなしになります。`)) void mutate(`/api/folders/${editingFolder.id}`, { method: 'DELETE' }).then(ok => ok && setEditingFolder(null)) }}>削除</button></div></form></div>}
       </main>
-    </div>
+    </SidebarWidth>
   </div>
 }
 
