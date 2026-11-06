@@ -1,0 +1,7 @@
+## Design
+
+- A Feeder v8 table stores only explicit per-feed intervals, keyed by feed with cascade deletion. Absence means inherit global. Existing known Feeder v7 schemas are recognized, backed up to `.v7-backup.sqlite3` without overwrite and upgraded transactionally; older Feeder schemas retain the existing upgrade path. Unknown schemas fail closed. Existing Feeder data, ordering, API keys and settings are retained.
+- Browser and public feed PATCH accept `poll_interval` as an integer in 60–86400 or null to inherit. Missing preserves the value. Validate all fields and enforce the current active-refresh lease inside the same immediate transaction; invalid values never partially modify feed or folder. `GET`/library and public feed responses expose nullable `poll_interval`.
+- Worker candidate selection and the atomic lease claim both use `coalesce(per_feed_interval, global_interval)` against `last_checked`, preserving paused/global-disable/lease behavior. Manual refresh remains independent of the interval.
+- The existing subscription edit dialog provides a numeric interval with an explicit inheritance choice. Configuration export contains the non-secret per-feed interval, preserving existing omissions and safety.
+- Test generated Feeder v7 backup/upgrade, strict schema recognition, interval boundaries and null, atomic edits, due-time selection and rechecking, browser/API authorization and reload, settings export, plus Linux/container regression. Do not access or convert old FeedAstrolabe data.

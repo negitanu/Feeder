@@ -11,6 +11,21 @@ const FOLDERS: &str = "CREATE TABLE folders (id INTEGER PRIMARY KEY, name TEXT N
 const FEEDS: &str = "CREATE TABLE feeds (id INTEGER PRIMARY KEY, url TEXT NOT NULL UNIQUE, title TEXT NOT NULL, folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL, paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN (0,1)), etag TEXT, modified TEXT, last_checked TEXT, last_error TEXT)";
 const SETTINGS: &str = "CREATE TABLE collection_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)), interval_seconds INTEGER NOT NULL DEFAULT 900 CHECK(interval_seconds BETWEEN 60 AND 86400))";
 const LEASES: &str = "CREATE TABLE refresh_leases (feed_id INTEGER PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE, owner TEXT NOT NULL, expires_at INTEGER NOT NULL)";
+const FEED_INTERVALS: &str = "CREATE TABLE feed_poll_intervals (feed_id INTEGER PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE, interval_seconds INTEGER NOT NULL CHECK(interval_seconds BETWEEN 60 AND 86400))";
+pub fn migrate_intervals(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
+    tx.execute(FEED_INTERVALS, [])?;
+    Ok(())
+}
+pub fn recognized_v8(objects: &[(String, String, Option<String>)]) -> bool {
+    let mut previous = objects.to_vec();
+    let Some(index) = previous.iter().position(|o| {
+        o.0 == "table" && o.1 == "feed_poll_intervals" && o.2.as_deref() == Some(FEED_INTERVALS)
+    }) else {
+        return false;
+    };
+    previous.remove(index);
+    auth::recognized_v7(&previous)
+}
 const INDEX: &str = "CREATE UNIQUE INDEX article_identity ON articles(feed_id,external_id)";
 pub fn migrate(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
     let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -142,6 +157,7 @@ pub(super) struct Feed {
     paused: bool,
     last_checked: Option<String>,
     last_error: Option<String>,
+    poll_interval: Option<i64>,
 }
 fn feed(r: &rusqlite::Row<'_>) -> rusqlite::Result<Feed> {
     Ok(Feed {
@@ -152,11 +168,12 @@ fn feed(r: &rusqlite::Row<'_>) -> rusqlite::Result<Feed> {
         paused: r.get(4)?,
         last_checked: r.get(5)?,
         last_error: r.get(6)?,
+        poll_interval: r.get(7)?,
     })
 }
 pub(super) fn get_feed(db: &Connection, id: i64) -> Result<Feed, StatusCode> {
     db.query_row(
-        "SELECT id,url,title,folder_id,paused,last_checked,last_error FROM feeds WHERE id=?",
+        "SELECT id,url,title,folder_id,paused,last_checked,last_error,(SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=feeds.id) FROM feeds WHERE id=?",
         [id],
         feed,
     )
@@ -187,7 +204,7 @@ async fn library(State(db): State<Db>) -> Result<Json<Library>, StatusCode> {
         .map_err(err)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(err)?;
-    let feeds=tx.prepare("SELECT f.id,f.url,f.title,f.folder_id,f.paused,f.last_checked,f.last_error FROM feeds f JOIN feed_order o ON o.feed_id=f.id LEFT JOIN folder_order fo ON fo.folder_id=f.folder_id ORDER BY f.folder_id IS NULL,fo.position,o.position,f.id").map_err(err)?.query_map([],feed).map_err(err)?.collect::<Result<Vec<_>,_>>().map_err(err)?;
+    let feeds=tx.prepare("SELECT f.id,f.url,f.title,f.folder_id,f.paused,f.last_checked,f.last_error,(SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id) FROM feeds f JOIN feed_order o ON o.feed_id=f.id LEFT JOIN folder_order fo ON fo.folder_id=f.folder_id ORDER BY f.folder_id IS NULL,fo.position,o.position,f.id").map_err(err)?.query_map([],feed).map_err(err)?.collect::<Result<Vec<_>,_>>().map_err(err)?;
     tx.commit().map_err(err)?;
     Ok(Json(Library { folders, feeds }))
 }
@@ -400,9 +417,41 @@ struct NewFeed {
 #[serde(deny_unknown_fields)]
 struct EditFeed {
     title: Option<String>,
+    #[serde(default, deserialize_with = "optional_present_string")]
+    url: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     folder_id: Option<Option<i64>>,
     paused: Option<bool>,
+    #[serde(default, deserialize_with = "double_interval")]
+    poll_interval: Option<Option<i64>>,
+}
+pub(super) fn double_interval<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Option<i64>>, D::Error> {
+    Option::<i64>::deserialize(d).map(Some)
+}
+pub(super) fn set_poll_interval(
+    db: &Connection,
+    id: i64,
+    interval: Option<Option<i64>>,
+) -> Result<(), StatusCode> {
+    match interval {
+        None => {}
+        Some(None) => {
+            db.execute("DELETE FROM feed_poll_intervals WHERE feed_id=?", [id])
+                .map_err(err)?;
+        }
+        Some(Some(value)) if (60..=86400).contains(&value) => {
+            db.execute("INSERT INTO feed_poll_intervals(feed_id,interval_seconds) VALUES (?,?) ON CONFLICT(feed_id) DO UPDATE SET interval_seconds=excluded.interval_seconds", params![id,value]).map_err(err)?;
+        }
+        Some(Some(_)) => return Err(StatusCode::BAD_REQUEST),
+    }
+    Ok(())
+}
+fn optional_present_string<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    String::deserialize(d).map(Some)
 }
 fn double_option<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<i64>>, D::Error> {
     Option::deserialize(d).map(Some)
@@ -421,6 +470,46 @@ pub(super) fn folder_exists(db: &Connection, id: Option<i64>) -> Result<(), Stat
     }
     Ok(())
 }
+pub(super) fn ensure_not_refreshing(db: &Connection, id: i64) -> Result<(), StatusCode> {
+    get_feed(db, id)?;
+    let active = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND expires_at>unixepoch())",
+        [id], |r| r.get::<_, bool>(0),
+    ).map_err(err)?;
+    if active {
+        Err(StatusCode::CONFLICT)
+    } else {
+        Ok(())
+    }
+}
+pub(super) fn edit_url(db: &Connection, id: i64, input: Option<&str>) -> Result<(), StatusCode> {
+    let Some(input) = input else {
+        return Ok(());
+    };
+    if input.len() > 8192 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let new_url = opml::safe_url(input).ok_or(StatusCode::BAD_REQUEST)?;
+    let old_url: String = db
+        .query_row("SELECT url FROM feeds WHERE id=?", [id], |r| r.get(0))
+        .map_err(err)?;
+    if opml::safe_url(&old_url).as_deref() == Some(new_url.as_str()) {
+        return Ok(());
+    }
+    let mut stmt = db
+        .prepare("SELECT url FROM feeds WHERE id<>?")
+        .map_err(err)?;
+    let urls = stmt
+        .query_map([id], |r| r.get::<_, String>(0))
+        .map_err(err)?;
+    for value in urls {
+        if opml::safe_url(&value.map_err(err)?).as_deref() == Some(new_url.as_str()) {
+            return Err(StatusCode::CONFLICT);
+        }
+    }
+    db.execute("UPDATE feeds SET url=?,etag=NULL,modified=NULL,last_checked=NULL,last_error=NULL WHERE id=?", params![new_url,id]).map_err(db_write_error)?;
+    Ok(())
+}
 async fn edit_feed(
     State(db): State<Db>,
     Path(id): Path<i64>,
@@ -430,23 +519,36 @@ async fn edit_feed(
     if !origin_allowed(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
-    if input.title.is_none() && input.folder_id.is_none() && input.paused.is_none() {
+    if input.title.is_none()
+        && input.url.is_none()
+        && input.folder_id.is_none()
+        && input.paused.is_none()
+        && input.poll_interval.is_none()
+    {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let db = db.lock().map_err(err)?;
-    let old = get_feed(&db, id)?;
+    let mut db = db.lock().map_err(err)?;
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(err)?;
+    ensure_not_refreshing(&tx, id)?;
+    let old = get_feed(&tx, id)?;
     let title = match &input.title {
         Some(s) => clean_name(s)?,
         None => &old.title,
     };
     let folder = input.folder_id.unwrap_or(old.folder_id);
-    folder_exists(&db, folder)?;
-    db.execute(
+    folder_exists(&tx, folder)?;
+    edit_url(&tx, id, input.url.as_deref())?;
+    set_poll_interval(&tx, id, input.poll_interval)?;
+    tx.execute(
         "UPDATE feeds SET title=?,folder_id=?,paused=? WHERE id=?",
         params![title, folder, input.paused.unwrap_or(old.paused), id],
     )
     .map_err(err)?;
-    Ok(Json(get_feed(&db, id)?))
+    let result = get_feed(&tx, id)?;
+    tx.commit().map_err(err)?;
+    Ok(Json(result))
 }
 async fn delete_feed(
     State(db): State<Db>,
@@ -456,14 +558,19 @@ async fn delete_feed(
     if !origin_allowed(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let db = db.lock().map_err(err)?;
-    if db
+    let mut db = db.lock().map_err(err)?;
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(err)?;
+    ensure_not_refreshing(&tx, id)?;
+    if tx
         .execute("DELETE FROM feeds WHERE id=?", [id])
         .map_err(err)?
         == 0
     {
         return Err(StatusCode::NOT_FOUND);
     }
+    tx.commit().map_err(err)?;
     Ok(StatusCode::NO_CONTENT)
 }
 pub(super) fn public_ip(ip: IpAddr) -> bool {
@@ -782,12 +889,14 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
     let owner = super::discovery::random()?;
     let (url, etag, modified) = {
         let mut db = db.lock().map_err(err)?;
-        let tx = db.transaction().map_err(err)?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(err)?;
         let f = get_feed(&tx, id)?;
         if f.paused {
             return Err(StatusCode::CONFLICT);
         }
-        if scheduled && !tx.query_row("SELECT EXISTS(SELECT 1 FROM feeds f, collection_settings s WHERE f.id=? AND s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked)<=unixepoch()-s.interval_seconds))", [id], |r| r.get::<_, bool>(0)).map_err(err)? { return Err(StatusCode::CONFLICT); }
+        if scheduled && !tx.query_row("SELECT EXISTS(SELECT 1 FROM feeds f, collection_settings s WHERE f.id=? AND s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked)<=unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)))", [id], |r| r.get::<_, bool>(0)).map_err(err)? { return Err(StatusCode::CONFLICT); }
         let changed = tx.execute("INSERT INTO refresh_leases(feed_id,owner,expires_at) VALUES (?1,?2,unixepoch()+60) ON CONFLICT(feed_id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE refresh_leases.expires_at <= unixepoch()", params![id,owner]).map_err(err)?;
         if changed == 0 {
             return Err(StatusCode::CONFLICT);
@@ -806,14 +915,7 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
     let result = fetch(&url, etag.as_deref(), modified.as_deref()).await;
     let mut db = db.lock().map_err(err)?;
     let outcome = match result {
-        Ok(result) => {
-            let still_owned = db.query_row("SELECT EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![id,owner], |r| r.get::<_,bool>(0)).map_err(err)?;
-            if still_owned {
-                apply_refresh(&mut db, id, result)
-            } else {
-                Err(StatusCode::CONFLICT)
-            }
-        }
+        Ok(result) => apply_refresh(&mut db, id, result, Some(&owner)),
         Err(status) => {
             db.execute("UPDATE feeds SET last_checked=datetime('now'),last_error=? WHERE id=? AND paused=0 AND EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![format!("Refresh failed ({})", status.as_u16()),id,id,owner]).map_err(err)?;
             Err(status)
@@ -874,6 +976,10 @@ async fn update_settings(
     db.execute("UPDATE collection_settings SET enabled=COALESCE(?1,enabled),interval_seconds=COALESCE(?2,interval_seconds) WHERE id=1", params![input.enabled,input.interval_seconds]).map_err(err)?;
     Ok(Json(read_settings(&db)?))
 }
+fn due_feed_ids(db: &Connection) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt = db.prepare("SELECT f.id FROM feeds f,collection_settings s WHERE s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked) <= unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)) ORDER BY f.id LIMIT 100")?;
+    stmt.query_map([], |r| r.get::<_, i64>(0))?.collect()
+}
 pub async fn worker(
     db: Db,
     once: bool,
@@ -885,9 +991,7 @@ pub async fn worker(
         }
         let ids = {
             let db = db.lock().map_err(|_| "database lock poisoned")?;
-            let mut stmt = db.prepare("SELECT f.id FROM feeds f,collection_settings s WHERE s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked) <= unixepoch()-s.interval_seconds) ORDER BY f.id LIMIT 100")?;
-            stmt.query_map([], |r| r.get::<_, i64>(0))?
-                .collect::<Result<Vec<_>, _>>()?
+            due_feed_ids(&db)?
         };
         for id in ids {
             if *shutdown.borrow() {
@@ -905,8 +1009,21 @@ pub async fn worker(
     }
 }
 
-fn apply_refresh(db: &mut Connection, id: i64, result: Fetched) -> Result<Feed, StatusCode> {
-    let tx = db.transaction().map_err(err)?;
+fn apply_refresh(
+    db: &mut Connection,
+    id: i64,
+    result: Fetched,
+    owner: Option<&str>,
+) -> Result<Feed, StatusCode> {
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(err)?;
+    if let Some(owner) = owner {
+        let owned = tx.query_row("SELECT EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![id,owner], |r| r.get::<_,bool>(0)).map_err(err)?;
+        if !owned {
+            return Err(StatusCode::CONFLICT);
+        }
+    }
     if get_feed(&tx, id)?.paused {
         return Err(StatusCode::CONFLICT);
     }
@@ -1061,6 +1178,8 @@ mod tests {
         db.lock().unwrap().execute_batch("INSERT INTO folders(id,name) VALUES (1,'One'),(2,'Two'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','A',1),(2,'https://b','B',2),(3,'https://c','C',2);").unwrap();
         let edit = |title: Option<&str>, folder_id| EditFeed {
             title: title.map(str::to_string),
+            url: None,
+            poll_interval: None,
             folder_id,
             paused: None,
         };
@@ -1104,7 +1223,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db");
         let c = open_db(&path, false).unwrap();
-        c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','Z',1),(2,'https://b','A',1),(3,'https://c','C',NULL); DROP TRIGGER folder_order_insert; DROP TRIGGER feed_order_insert; DROP TRIGGER feed_order_move; DROP TABLE feed_order; DROP TABLE folder_order; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=4;").unwrap();
+        c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','Z',1),(2,'https://b','A',1),(3,'https://c','C',NULL); DROP TRIGGER folder_order_insert; DROP TRIGGER feed_order_insert; DROP TRIGGER feed_order_move; DROP TABLE feed_order; DROP TABLE folder_order; DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=4;").unwrap();
         drop(c);
         let c = open_db(&path, false).unwrap();
         let order = snapshot(&c).unwrap();
@@ -1142,6 +1261,98 @@ mod tests {
             add_feed(db, "https://example.org/feed#new", None).await,
             Err(StatusCode::CONFLICT)
         ));
+    }
+    #[tokio::test]
+    async fn per_feed_intervals_control_candidate_and_claim() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        {
+            let c = db.lock().unwrap();
+            c.execute_batch("INSERT INTO feeds(id,url,title,last_checked) VALUES(1,'https://example.org/a','A',datetime('now','-5 minutes')),(2,'https://example.org/b','B',datetime('now','-5 minutes')),(3,'https://example.org/c','C',NULL); UPDATE collection_settings SET enabled=1,interval_seconds=900; INSERT INTO feed_poll_intervals VALUES(1,60),(2,3600); UPDATE feeds SET paused=1 WHERE id=3;").unwrap();
+            assert_eq!(due_feed_ids(&c).unwrap(), vec![1]);
+            c.execute(
+                "UPDATE feed_poll_intervals SET interval_seconds=3600 WHERE feed_id=1",
+                [],
+            )
+            .unwrap();
+        }
+        assert!(matches!(
+            refresh_feed(db.clone(), 1, true).await,
+            Err(StatusCode::CONFLICT)
+        ));
+        {
+            let c = db.lock().unwrap();
+            assert!(due_feed_ids(&c).unwrap().is_empty());
+            c.execute("DELETE FROM feed_poll_intervals WHERE feed_id=1", [])
+                .unwrap();
+            c.execute("UPDATE collection_settings SET interval_seconds=60", [])
+                .unwrap();
+            assert_eq!(due_feed_ids(&c).unwrap(), vec![1]);
+            c.execute("UPDATE collection_settings SET enabled=0", [])
+                .unwrap();
+            assert!(due_feed_ids(&c).unwrap().is_empty());
+        }
+    }
+    #[test]
+    fn v7_interval_upgrade_keeps_backup_and_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db.sqlite3");
+        let c = open_db(&path, false).unwrap();
+        c.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.org/feed','Saved'); INSERT INTO articles(id,title,content,url,published,feed_id,is_read,is_starred) VALUES(1,'saved','body','https://example.org/a','2026',1,1,1); INSERT INTO article_visits VALUES(1,'2026-01-01'); INSERT INTO api_keys(name,prefix,token_hash,scope,expires_at) VALUES('synthetic','prefix','synthetic-hash','read','2099-01-01'); UPDATE reader_settings SET default_view='starred'; DROP TABLE feed_poll_intervals; PRAGMA user_version=7;").unwrap();
+        drop(c);
+        let backup = path.with_extension("v7-backup.sqlite3");
+        std::fs::write(&backup, b"do not overwrite").unwrap();
+        assert!(open_db(&path, false).is_err());
+        assert_eq!(std::fs::read(&backup).unwrap(), b"do not overwrite");
+        std::fs::remove_file(&backup).unwrap();
+        let c = open_db(&path, false).unwrap();
+        assert_eq!(
+            c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            8
+        );
+        assert!(lookup(&c, 1).unwrap().is_starred);
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM article_visits", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM feed_poll_intervals", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT token_hash FROM api_keys WHERE name='synthetic'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "synthetic-hash"
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM feed_order WHERE feed_id=1", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            c.query_row("SELECT default_view FROM reader_settings", [], |r| r
+                .get::<_, String>(0))
+                .unwrap(),
+            "starred"
+        );
+        let old = Connection::open(&backup).unwrap();
+        assert_eq!(
+            old.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            7
+        );
+        drop(c);
+        assert!(open_db(&path, false).is_ok());
     }
     #[tokio::test]
     async fn scheduled_claim_checks_due_disabled_paused_and_lease() {
@@ -1272,7 +1483,7 @@ mod tests {
             etag: None,
             modified: None,
         };
-        let feed = apply_refresh(&mut db, 1, result).unwrap();
+        let feed = apply_refresh(&mut db, 1, result, None).unwrap();
         assert!(feed.last_checked.is_some());
         assert!(feed.last_error.is_none());
         assert_eq!(
@@ -1291,7 +1502,8 @@ mod tests {
                     parsed: None,
                     etag: None,
                     modified: None
-                }
+                },
+                None
             ),
             Err(StatusCode::CONFLICT)
         ));
@@ -1304,10 +1516,39 @@ mod tests {
                     parsed: None,
                     etag: None,
                     modified: None
-                }
+                },
+                None
             ),
             Err(StatusCode::NOT_FOUND)
         ));
+    }
+    #[test]
+    fn expired_refresh_cannot_apply_after_url_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = open_db(&dir.path().join("db"), false).unwrap();
+        db.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.org/new','saved'); INSERT INTO refresh_leases(feed_id,owner,expires_at) VALUES(1,'old-worker',unixepoch()-1);").unwrap();
+        let parsed = feed_rs::parser::parse(&b"<feed xmlns='http://www.w3.org/2005/Atom'><title>Old</title><id>urn:old</id><updated>2026-01-01T00:00:00Z</updated><entry><id>urn:stale</id><title>Stale</title><updated>2026-01-01T00:00:00Z</updated></entry></feed>"[..]).unwrap();
+        let result = Fetched {
+            parsed: Some(parsed),
+            etag: Some("stale-etag".into()),
+            modified: None,
+        };
+        assert!(matches!(
+            apply_refresh(&mut db, 1, result, Some("old-worker")),
+            Err(StatusCode::CONFLICT)
+        ));
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM articles", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        let (url, etag): (String, Option<String>) = db
+            .query_row("SELECT url,etag FROM feeds WHERE id=1", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(url, "https://example.org/new");
+        assert_eq!(etag, None);
     }
     #[test]
     fn parses_atom_fixture() {

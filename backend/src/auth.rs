@@ -465,6 +465,374 @@ mod tests {
         b.body(Body::from(body.to_string())).unwrap()
     }
     #[tokio::test]
+    async fn production_subscription_url_edits_are_atomic_and_lease_aware() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db");
+        let db = Arc::new(Mutex::new(open_db(&path, false).unwrap()));
+        {
+            let c = db.lock().unwrap();
+            c.execute_batch("INSERT INTO feeds(id,url,title,etag,modified,last_checked,last_error) VALUES (1,'https://example.org/original','Original','old-etag','old-date','2026-01-01','old error'),(2,'https://example.org/other#fragment','Other',NULL,NULL,NULL,NULL); INSERT INTO articles(id,feed_id,external_id,title,content,url,published,is_read,is_starred) VALUES(1,1,'guid','Saved','body','https://example.org/article','2026-01-01',1,1); INSERT INTO article_visits VALUES(1,'2026-01-02');").unwrap();
+            for (token, scope) in [("write-secret", "write"), ("read-secret", "read")] {
+                c.execute("INSERT INTO api_keys(name,prefix,token_hash,scope,expires_at) VALUES('test','prefix',?,?,datetime('now','+1 day'))", params![hash(token),scope]).unwrap();
+            }
+        }
+        let access = Access {
+            mode: Mode::Local,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        };
+        let router = wrap(
+            base_router(db.clone()).merge(routes(access.clone()).with_state(db.clone())),
+            db.clone(),
+            access,
+            "127.0.0.1:8080".parse().unwrap(),
+            None,
+        );
+        let session = router
+            .clone()
+            .oneshot(request(
+                "GET",
+                "/api/session",
+                "127.0.0.1:8080",
+                None,
+                None,
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        let cookie = session.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        let csrf = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(session.into_body(), 4096).await.unwrap(),
+        )
+        .unwrap()["csrf_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let browser = |method: &str, path: &str, body: &str| {
+            request(
+                method,
+                path,
+                "127.0.0.1:8080",
+                Some(&cookie),
+                Some(&csrf),
+                None,
+                body,
+            )
+        };
+        let api = |method: &str, path: &str, body: &str, token: &str| {
+            let mut req = request(method, path, "127.0.0.1:8080", None, None, None, body);
+            req.headers_mut().insert(
+                header::AUTHORIZATION,
+                format!("Bearer {token}").parse().unwrap(),
+            );
+            req
+        };
+        for url in [
+            "http://127.0.0.1/feed",
+            "http://private.local/feed",
+            "http://localhost./feed",
+            "http://private.local./feed",
+            "https://user:pass@example.org/feed",
+            "file:///tmp/feed",
+        ] {
+            let body =
+                serde_json::json!({"url":url,"folder":"Must not be created","title":"Changed"})
+                    .to_string();
+            assert_eq!(
+                router
+                    .clone()
+                    .oneshot(api("PATCH", "/api/v1/feeds/1", &body, "write-secret"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        let body = r#"{"url":"https://EXAMPLE.org/other#new","folder":"Must not be created","title":"Changed"}"#;
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(api("PATCH", "/api/v1/feeds/1", body, "write-secret"))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(api(
+                    "PATCH",
+                    "/api/v1/feeds/1",
+                    r#"{"url":"https://example.org/new"}"#,
+                    "read-secret"
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(request(
+                    "PATCH",
+                    "/api/feeds/1",
+                    "127.0.0.1:8080",
+                    None,
+                    None,
+                    None,
+                    r#"{"url":"https://example.org/new"}"#
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        for value in [
+            serde_json::json!(59),
+            serde_json::json!(86401),
+            serde_json::json!(1.5),
+            serde_json::json!(true),
+            serde_json::json!("300"),
+        ] {
+            let body = serde_json::json!({"poll_interval":value,"url":"https://example.org/new","folder":"Must not be created"})
+                .to_string();
+            assert_eq!(
+                router
+                    .clone()
+                    .oneshot(api("PATCH", "/api/v1/feeds/1", &body, "write-secret"))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(
+            db.lock()
+                .unwrap()
+                .query_row("SELECT url FROM feeds WHERE id=1", [], |r| r
+                    .get::<_, String>(0))
+                .unwrap(),
+            "https://example.org/original"
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(api(
+                    "PATCH",
+                    "/api/v1/feeds/1",
+                    r#"{"poll_interval":60}"#,
+                    "read-secret"
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(api(
+                    "PATCH",
+                    "/api/v1/feeds/1",
+                    r#"{"poll_interval":60}"#,
+                    "write-secret"
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        let response = router
+            .clone()
+            .oneshot(api("GET", "/api/v1/feeds/1", "", "read-secret"))
+            .await
+            .unwrap();
+        let value: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(value["data"]["poll_interval"], 60);
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(browser(
+                    "PATCH",
+                    "/api/feeds/1",
+                    r#"{"poll_interval":86400}"#
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            db.lock()
+                .unwrap()
+                .query_row(
+                    "SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=1",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            86400
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(browser(
+                    "PATCH",
+                    "/api/feeds/1",
+                    r#"{"poll_interval":null}"#
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            db.lock()
+                .unwrap()
+                .query_row("SELECT count(*) FROM feed_poll_intervals", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        let worker = open_db(&path, false).unwrap();
+        worker
+            .execute(
+                "INSERT INTO refresh_leases VALUES(1,'worker',unixepoch()+60)",
+                [],
+            )
+            .unwrap();
+        for req in [
+            browser(
+                "PATCH",
+                "/api/feeds/1",
+                r#"{"url":"https://example.org/new","title":"Changed"}"#,
+            ),
+            browser("DELETE", "/api/feeds/1", ""),
+            api(
+                "PATCH",
+                "/api/v1/feeds/1",
+                r#"{"url":"https://example.org/new","folder":"Must not be created"}"#,
+                "write-secret",
+            ),
+            api("DELETE", "/api/v1/feeds/1", "", "write-secret"),
+        ] {
+            assert_eq!(
+                router.clone().oneshot(req).await.unwrap().status(),
+                StatusCode::CONFLICT
+            );
+        }
+        {
+            let c = db.lock().unwrap();
+            assert_eq!(
+                c.query_row(
+                    "SELECT count(*) FROM folders WHERE name='Must not be created'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            assert_eq!(
+                c.query_row("SELECT title FROM feeds WHERE id=1", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "Original"
+            );
+            c.execute(
+                "UPDATE refresh_leases SET expires_at=unixepoch()-1 WHERE feed_id=1",
+                [],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(browser(
+                    "PATCH",
+                    "/api/feeds/1",
+                    r#"{"url":"https://EXAMPLE.org/original#ignored"}"#
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            db.lock()
+                .unwrap()
+                .query_row("SELECT etag FROM feeds WHERE id=1", [], |r| r
+                    .get::<_, String>(0))
+                .unwrap(),
+            "old-etag"
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(api(
+                    "PATCH",
+                    "/api/v1/feeds/1",
+                    r#"{"url":"https://example.org/changed#fragment","folder":"New folder"}"#,
+                    "write-secret"
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        {
+            let c = db.lock().unwrap();
+            let (url, etag, modified, checked, error): (
+                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            ) = c
+                .query_row(
+                    "SELECT url,etag,modified,last_checked,last_error FROM feeds WHERE id=1",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                )
+                .unwrap();
+            assert_eq!(url, "https://example.org/changed");
+            assert_eq!((etag, modified, checked, error), (None, None, None, None));
+            assert!(
+                c.query_row(
+                    "SELECT is_read AND is_starred FROM articles WHERE id=1",
+                    [],
+                    |r| r.get::<_, bool>(0)
+                )
+                .unwrap()
+            );
+            assert_eq!(
+                c.query_row(
+                    "SELECT visited_at FROM article_visits WHERE article_id=1",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+                "2026-01-02"
+            );
+        }
+        assert_eq!(
+            router
+                .oneshot(browser("DELETE", "/api/feeds/2", ""))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT
+        );
+    }
+    #[tokio::test]
     async fn production_sessions_keys_and_limits() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db");
@@ -632,7 +1000,7 @@ mod tests {
             [],
         )
         .unwrap();
-        db.execute_batch("INSERT INTO folders(id,name) VALUES(10,'folder'); INSERT INTO feeds(id,url,title,folder_id) VALUES(20,'https://example.com/feed','feed',10); UPDATE articles SET is_read=1,is_starred=1,feed_id=20; INSERT INTO article_visits(article_id,visited_at) VALUES(1,'2026-01-01'); UPDATE reader_settings SET default_view='starred'; DROP TABLE api_keys; DROP TABLE api_rate_settings; PRAGMA user_version=6;")
+        db.execute_batch("INSERT INTO folders(id,name) VALUES(10,'folder'); INSERT INTO feeds(id,url,title,folder_id) VALUES(20,'https://example.com/feed','feed',10); UPDATE articles SET is_read=1,is_starred=1,feed_id=20; INSERT INTO article_visits(article_id,visited_at) VALUES(1,'2026-01-01'); UPDATE reader_settings SET default_view='starred'; DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings; PRAGMA user_version=6;")
         .unwrap();
         drop(db);
         let db = open_db(&p, false).unwrap();

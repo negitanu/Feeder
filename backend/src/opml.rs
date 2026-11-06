@@ -40,7 +40,7 @@ struct ImportInput {
     xml: String,
 }
 
-fn safe_url(raw: &str) -> Option<String> {
+pub(super) fn safe_url(raw: &str) -> Option<String> {
     let mut u = Url::parse(raw.trim()).ok()?;
     if !matches!(u.scheme(), "http" | "https")
         || !u.username().is_empty()
@@ -50,7 +50,10 @@ fn safe_url(raw: &str) -> Option<String> {
         return None;
     }
     if let Some(h) = u.host_str() {
-        if h.eq_ignore_ascii_case("localhost") || h.ends_with(".localhost") || h.ends_with(".local")
+        let domain = h.trim_end_matches('.');
+        if domain.eq_ignore_ascii_case("localhost")
+            || domain.ends_with(".localhost")
+            || domain.ends_with(".local")
         {
             return None;
         }

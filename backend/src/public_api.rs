@@ -58,12 +58,12 @@ fn feed_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<FeedDto> {
         folder: r.get(3)?,
         enabled: !r.get::<_, bool>(4)?,
         source_type: "rss",
-        poll_interval: None,
+        poll_interval: r.get(7)?,
         last_checked: r.get(5)?,
         error: r.get(6)?,
     })
 }
-const FEED_SELECT: &str = "SELECT f.id,f.url,f.title,d.name,f.paused,f.last_checked,f.last_error FROM feeds f LEFT JOIN folders d ON d.id=f.folder_id";
+const FEED_SELECT: &str = "SELECT f.id,f.url,f.title,d.name,f.paused,f.last_checked,f.last_error,(SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id) FROM feeds f LEFT JOIN folders d ON d.id=f.folder_id";
 fn get_feed(db: &Connection, id: i64) -> ResultApi<FeedDto> {
     db.query_row(&format!("{FEED_SELECT} WHERE f.id=?"), [id], feed_row)
         .optional()
@@ -152,16 +152,13 @@ struct EditFeed {
     #[serde(default, deserialize_with = "strict_string")]
     title: Option<String>,
     #[serde(default, deserialize_with = "strict_string")]
+    url: Option<String>,
+    #[serde(default, deserialize_with = "strict_string")]
     folder: Option<String>,
     #[serde(default, deserialize_with = "strict_bool")]
     enabled: Option<bool>,
-    #[serde(default, deserialize_with = "double_value")]
-    poll_interval: Option<Option<serde_json::Value>>,
-}
-fn double_value<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> Result<Option<Option<serde_json::Value>>, D::Error> {
-    Option::deserialize(d).map(Some)
+    #[serde(default, deserialize_with = "collection::double_interval")]
+    poll_interval: Option<Option<i64>>,
 }
 async fn edit(
     State(db): State<Db>,
@@ -170,13 +167,11 @@ async fn edit(
 ) -> ResultApi<Json<serde_json::Value>> {
     let input = body(input)?;
     if input.title.is_none()
+        && input.url.is_none()
         && input.folder.is_none()
         && input.enabled.is_none()
         && input.poll_interval.is_none()
     {
-        return Err(bad());
-    }
-    if input.poll_interval.as_ref().is_some_and(|v| v.is_some()) {
         return Err(bad());
     }
     let title = input
@@ -186,8 +181,13 @@ async fn edit(
         .transpose()?;
     let folder = input.folder.as_deref().map(folder_name).transpose()?;
     let mut db = db.lock().map_err(internal)?;
-    let tx = db.transaction().map_err(internal)?;
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(internal)?;
+    collection::ensure_not_refreshing(&tx, id)?;
     let old = get_feed(&tx, id)?;
+    collection::edit_url(&tx, id, input.url.as_deref())?;
+    collection::set_poll_interval(&tx, id, input.poll_interval)?;
     let fid = match folder {
         Some(s) => ensure_folder(&tx, s)?,
         None => tx
@@ -209,14 +209,19 @@ async fn edit(
     Ok(envelope(result))
 }
 async fn remove(State(db): State<Db>, Path(id): Path<i64>) -> ResultApi<StatusCode> {
-    let db = db.lock().map_err(internal)?;
-    if db
+    let mut db = db.lock().map_err(internal)?;
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(internal)?;
+    collection::ensure_not_refreshing(&tx, id)?;
+    if tx
         .execute("DELETE FROM feeds WHERE id=?", [id])
         .map_err(internal)?
         == 0
     {
         return Err(ApiError(StatusCode::NOT_FOUND));
     }
+    tx.commit().map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 async fn refresh(State(db): State<Db>, Path(id): Path<i64>) -> ResultApi<Json<serde_json::Value>> {
@@ -578,8 +583,8 @@ mod tests {
             r#"{"title":"Changed","enabled":"true"}"#,
             r#"{"title":null}"#,
             r#"{"folder":null}"#,
-            r#"{"poll_interval":300}"#,
-            r#"{"url":"https://other.example/"}"#,
+            r#"{"poll_interval":59}"#,
+            r#"{"url":"http://127.0.0.1/"}"#,
         ] {
             assert_eq!(
                 router

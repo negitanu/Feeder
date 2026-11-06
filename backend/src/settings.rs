@@ -6,6 +6,7 @@ use axum::{
 use std::collections::HashSet;
 
 const SETTINGS: &str = "CREATE TABLE reader_settings (id INTEGER PRIMARY KEY CHECK(id=1), display_timezone TEXT NOT NULL DEFAULT 'UTC' CHECK(display_timezone IN ('UTC','Asia/Tokyo')), default_view TEXT NOT NULL DEFAULT 'all' CHECK(default_view IN ('all','unread','starred')))";
+type ExportFeed = (i64, String, String, Option<i64>, bool, Option<i64>);
 pub fn migrate(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
     tx.execute(SETTINGS, [])?;
     tx.execute("INSERT INTO reader_settings(id) VALUES (1)", [])?;
@@ -222,7 +223,7 @@ async fn export(
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(collection::err)?;
     let folders:Vec<(i64,String)>=tx.prepare("SELECT f.id,f.name FROM folders f JOIN folder_order o ON o.folder_id=f.id ORDER BY o.position,f.id").map_err(collection::err)?.query_map([],|r| Ok((r.get(0)?,r.get(1)?))).map_err(collection::err)?.collect::<Result<_,_>>().map_err(collection::err)?;
-    let feeds:Vec<(i64,String,String,Option<i64>,bool)>=tx.prepare("SELECT f.id,f.url,f.title,f.folder_id,f.paused FROM feeds f JOIN feed_order o ON o.feed_id=f.id LEFT JOIN folder_order fo ON fo.folder_id=f.folder_id ORDER BY f.folder_id IS NULL,fo.position,o.position,f.id").map_err(collection::err)?.query_map([],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).map_err(collection::err)?.collect::<Result<_,_>>().map_err(collection::err)?;
+    let feeds:Vec<ExportFeed>=tx.prepare("SELECT f.id,f.url,f.title,f.folder_id,f.paused,(SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id) FROM feeds f JOIN feed_order o ON o.feed_id=f.id LEFT JOIN folder_order fo ON fo.folder_id=f.folder_id ORDER BY f.folder_id IS NULL,fo.position,o.position,f.id").map_err(collection::err)?.query_map([],|r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).map_err(collection::err)?.collect::<Result<_,_>>().map_err(collection::err)?;
     let timestamp: String = tx
         .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')", [], |r| {
             r.get(0)
@@ -230,7 +231,7 @@ async fn export(
         .map_err(collection::err)?;
     let mut omissions = Vec::new();
     let folders:Vec<_>=folders.into_iter().enumerate().map(|(i,(id,name))| serde_json::json!({"id":id,"name":clean_text(name,format!("settings.folders[{i}].name"),&mut omissions)})).collect();
-    let subscriptions:Vec<_>=feeds.into_iter().enumerate().map(|(i,(id,url,title,folder_id,paused))| serde_json::json!({"id":id,"url":clean_url(url,format!("settings.subscriptions[{i}].url"),&mut omissions),"title":clean_text(title,format!("settings.subscriptions[{i}].title"),&mut omissions),"folder_id":folder_id,"paused":paused})).collect();
+    let subscriptions:Vec<_>=feeds.into_iter().enumerate().map(|(i,(id,url,title,folder_id,paused,poll_interval))| serde_json::json!({"id":id,"url":clean_url(url,format!("settings.subscriptions[{i}].url"),&mut omissions),"title":clean_text(title,format!("settings.subscriptions[{i}].title"),&mut omissions),"folder_id":folder_id,"paused":paused,"poll_interval":poll_interval})).collect();
     let result = serde_json::json!({"format":"feeder-settings","format_version":1,"app_version":env!("CARGO_PKG_VERSION"),"schema_version":schema_version,"exported_at":timestamp,"settings":{"collection":{"enabled":enabled,"interval_seconds":interval_seconds},"reader":reader,"api":{"rate_limit":rate_limit},"folders":folders,"subscriptions":subscriptions,"presentation":input.presentation},"omissions":omissions,"unsupported_sections":["ai","connectors","import"]});
     tx.commit().map_err(collection::err)?;
     Ok((
@@ -377,7 +378,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db");
         let db = open_db(&path, false).unwrap();
-        db.execute_batch("INSERT INTO folders(id,name) VALUES(4,'folder'),(5,'other'); UPDATE folder_order SET position=CASE folder_id WHEN 4 THEN 1 ELSE 0 END; INSERT INTO feeds(id,url,title,folder_id) VALUES(7,'https://example.com','feed',4),(8,'https://example.org','other',4); UPDATE feed_order SET position=CASE feed_id WHEN 7 THEN 1 ELSE 0 END; INSERT INTO articles(id,title,content,url,published,is_read,is_starred,feed_id) VALUES(9,'title','body','https://example.com/a','2026-01-01',1,1,7); INSERT INTO article_visits VALUES(9,'2026-01-02'); UPDATE collection_settings SET enabled=1; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=5;").unwrap();
+        db.execute_batch("INSERT INTO folders(id,name) VALUES(4,'folder'),(5,'other'); UPDATE folder_order SET position=CASE folder_id WHEN 4 THEN 1 ELSE 0 END; INSERT INTO feeds(id,url,title,folder_id) VALUES(7,'https://example.com','feed',4),(8,'https://example.org','other',4); UPDATE feed_order SET position=CASE feed_id WHEN 7 THEN 1 ELSE 0 END; INSERT INTO articles(id,title,content,url,published,is_read,is_starred,feed_id) VALUES(9,'title','body','https://example.com/a','2026-01-01',1,1,7); INSERT INTO article_visits VALUES(9,'2026-01-02'); UPDATE collection_settings SET enabled=1; DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=5;").unwrap();
         drop(db);
         let db = open_db(&path, false).unwrap();
         assert_eq!(read(&db).unwrap().default_view, "all");
@@ -431,8 +432,10 @@ mod tests {
         drop(db);
         let old = Connection::open(&path).unwrap();
         old.execute("DROP TABLE reader_settings", []).unwrap();
-        old.execute_batch("DROP TABLE api_keys; DROP TABLE api_rate_settings;")
-            .unwrap();
+        old.execute_batch(
+            "DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings;",
+        )
+        .unwrap();
         old.pragma_update(None, "user_version", 5).unwrap();
         drop(old);
         assert!(open_db(&path, false).is_err());

@@ -62,7 +62,8 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
         let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if !objects.is_empty()
             && !(app_id == APP_ID
-                && ((version == 7 && auth::recognized_v7(&objects))
+                && ((version == 8 && collection::recognized_v8(&objects))
+                    || (version == 7 && auth::recognized_v7(&objects))
                     || (version == 6 && settings::recognized_v6(&objects))
                     || (version == 5 && collection::recognized_v5(&objects))
                     || (version == 4 && reader::recognized_v4(&objects))
@@ -87,7 +88,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     db.pragma_update(None, "foreign_keys", true)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if (1..=6).contains(&version) {
+    if (1..=7).contains(&version) {
         let backup_path = path.with_extension(format!("v{version}-backup.sqlite3"));
         if backup_path.exists() {
             return Err("database backup already exists; refusing to overwrite it".into());
@@ -118,7 +119,10 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     if version < 7 {
         auth::migrate(&tx)?;
     }
-    tx.pragma_update(None, "user_version", 7)?;
+    if version < 8 {
+        collection::migrate_intervals(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", 8)?;
     if demo {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
         if count == 0 {
@@ -582,8 +586,10 @@ mod tests {
         ] {
             db.execute(sql, []).unwrap();
         }
-        db.execute_batch("DROP TABLE api_keys; DROP TABLE api_rate_settings;")
-            .unwrap();
+        db.execute_batch(
+            "DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings;",
+        )
+        .unwrap();
         db.execute("DROP TABLE reader_settings", []).unwrap();
         db.execute("DROP TABLE article_visits", []).unwrap();
         db.execute("DROP TABLE refresh_leases", []).unwrap();
