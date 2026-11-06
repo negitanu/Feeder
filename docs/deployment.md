@@ -79,4 +79,4 @@ DB v7 はAPIキーのハッシュ・期限・失効とAPI回数上限を追加�
 
 DB v8 はフィードごとの収集間隔を追加します。認識済みの Feeder v7 から更新する際、`feeder.v7-backup.sqlite3` を作ります。未設定のフィードは全体設定を継承します。
 
-外部公開には[保護されたTunnel構成](api-access-control.md)を参照してください。ファイル方式の `compose.tunnel.yml` と `.env` 方式の `compose.tunnel-env.yml` は、どちらもWebのhost portを消します。設定の構文検査だけで実際のAccessポリシー・JWT検証が完了したとは扱いません。実ドメインの受入は別途必要です。
+外部公開には[保護されたTunnel構成](api-access-control.md)を参照してください。`.env` にTunnel設定を行い、`docker compose --profile tunnel up -d` で起動します。設定の構文検査だけで実際のAccessポリシー・JWT検証が完了したとは扱いません。実ドメインの受入は別途必要です。

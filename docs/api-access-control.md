@@ -28,20 +28,18 @@ URLは公開HTTP(S)形式で、認証情報やローカルアドレスを含め�
 
 通常のComposeは `local` モードで、ホストのループバックだけへポートを公開します。Host制限はDNS再バインド等の保護であり、利用者の認証ではありません。ポートを外部向けに変更してローカルUIを公開しないでください。
 
-外部向けは `compose.tunnel.yml` を重ねます。この構成はWebポートの公開を消し、Cloudflare Tunnelだけから到達する前提です。公開ホストのAccess許可ポリシーと **Protect with Access** によるJWT検証を事前に設定します。Tunnel tokenだけで閲覧者が認証されるわけではありません。アプリはJWTを独自検証せず、認証済みのTunnel接続と信頼されたコンテナネットワークを境界とします。
+外部向けは `.env` に公開設定と `TUNNEL_TOKEN` を設定し、`docker compose --profile tunnel up -d --build` で起動します。`FEEDER_ACCESS_MODE=tunnel` を設定します。Webポートはlocalhostにのみ公開されます。公開ホストのAccess許可ポリシーと **Protect with Access** によるJWT検証を事前に設定します。Tunnel tokenだけで閲覧者が認証されるわけではありません。アプリはJWTを独自検証せず、認証済みのTunnel接続と信頼されたコンテナネットワークを境界とします。
 
-`FEEDER_PUBLIC_ORIGIN` に末尾スラッシュのない正確なHTTPS origin、`FEEDER_PUBLIC_HOST` に同じauthority、`FEEDER_TUNNEL_IMAGE` に固定バージョンまたはdigestの公式イメージ、`FEEDER_TUNNEL_TOKEN_FILE` に保護したtokenファイルの場所を指定します。token本文をコマンドラインやリポジトリへ入れません。ファイルはLinuxホスト上でconnectorのUID/GID65532から読める所有者・権限で配置してください（例: 所有者65532:65532、0400）。他の利用者が読める配置は避けてください。
+`.env` の `FEEDER_PUBLIC_ORIGIN` に末尾スラッシュのない正確なHTTPS origin、`FEEDER_PUBLIC_HOST` に同じauthority、`FEEDER_TUNNEL_IMAGE` に固定バージョンまたはdigestの公式イメージ、`TUNNEL_TOKEN` にTunnelトークンを指定します。`FEEDER_ACCESS_MODE=tunnel` も指定してください。.envは権限を制限し、値をリポジトリへ入れないでください。
 
-公開前に、環境変数を設定したうえで `python3 scripts/check-tunnel-config.py` を実行します。この検査はtoken本文を読みません。設定を確認してから `docker compose -f compose.yml -f compose.tunnel.yml up -d --build` で起動します。Composeの `!reset` 対応版が必要です。通常のローカル環境と同じvolumeを使うため、切替前にWeb/workerを停止しバックアップしてください。
-
-移植元と同様に `.env` の `TUNNEL_TOKEN` を使う場合は、上記のファイル方式に代えて `compose.tunnel-env.yml` を指定します。両方の上書きファイルを同時に使わないでください。`.env` の `FEEDER_PUBLIC_ORIGIN`、`FEEDER_PUBLIC_HOST`、`FEEDER_TUNNEL_IMAGE` と `TUNNEL_TOKEN` を設定したうえで、次のように検査・起動します。
+公開前に、設定を構文検査します。この検査はtoken本文を表示しません。通常のローカル環境と同じvolumeを使うため、切替前にWeb/workerを停止しバックアップしてください。
 
 ```sh
-python3 scripts/check-tunnel-config.py --token-mode env
-docker compose -f compose.yml -f compose.tunnel-env.yml up -d --build
+python3 scripts/check-tunnel-config.py
+docker compose --profile tunnel up -d --build
 ```
 
-別ファイルを使用する場合は、検査スクリプトとComposeのそれぞれに `--env-file /path/to/file` を指定します。`.env` 方式ではトークンはコネクターの環境変数になり、権限を持つ利用者にはコンテナ設定や `docker compose config` で見えます。`.env` の権限を制限し、その出力を共有しないでください。検査スクリプトは設定内容やトークン値を表示しません。`.env` 変更後は対象コンテナを再作成してください。
+トークンはコネクターの環境変数になり、権限を持つ利用者にはコンテナ設定や `docker compose config` で見えます。`.env` の権限を制限し、その出力を共有しないでください。`.env` 変更後は対象コンテナを再作成してください。
 
 公開後の受入は実ドメインで、未ログイン・非許可利用者の拒否、許可利用者の画面とCSRF操作、Service Auth policyを通したサービス認証＋アプリBearer、originへ直接入れないこと、healthと終了処理を確認します。この実装作業では実トークンを用意せず、Tunnel接続・外部公開を実行していません。
 

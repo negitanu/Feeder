@@ -10,9 +10,11 @@ services:
     environment:
       FEEDER_DB: /data/feeder.sqlite3
       FEEDER_BIND: 0.0.0.0:8080
-      FEEDER_ACCESS_MODE: local
+      FEEDER_ACCESS_MODE: ${FEEDER_ACCESS_MODE:-local}
+      FEEDER_PUBLIC_ORIGIN: ${FEEDER_PUBLIC_ORIGIN:-}
+      FEEDER_PUBLIC_HOST: ${FEEDER_PUBLIC_HOST:-}
       FEEDER_DEMO: ${FEEDER_DEMO:-0}
-      FEEDER_ALLOWED_HOSTS: ${FEEDER_ALLOWED_HOSTS:-localhost:${FEEDER_PORT:-8080},127.0.0.1:${FEEDER_PORT:-8080},127.0.0.1:8080,web:8080}
+      FEEDER_ALLOWED_HOSTS: ${FEEDER_ALLOWED_HOSTS:-${FEEDER_PUBLIC_HOST:-localhost:${FEEDER_PORT:-8080}},127.0.0.1:${FEEDER_PORT:-8080},127.0.0.1:8080,web:8080}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       ORCAROUTER_API_KEY: ${ORCAROUTER_API_KEY:-}
     ports:
@@ -38,6 +40,25 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+  tunnel:
+    profiles: [tunnel]
+    image: ${FEEDER_TUNNEL_IMAGE:-cloudflare/cloudflared:2026.10.7}
+    command: [tunnel, --no-autoupdate, run]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 128
+    stop_grace_period: 30s
+    depends_on:
+      web:
+        condition: service_healthy
 
   worker:
     image: feeder:local

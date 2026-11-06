@@ -1,0 +1,2 @@
+## Design
+The tunnel profile uses the same non-root, read-only connector as before. The Web port remains bound to loopback in both modes; public access requires tunnel mode, an exact origin, allowed hosts and a Cloudflare Access policy. The connector token is supplied through .env and never printed by the configuration checker. The removed token-file override is no longer supported. Verify local and tunnel configuration using synthetic values.

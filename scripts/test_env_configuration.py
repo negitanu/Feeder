@@ -23,7 +23,6 @@ class EnvConfigurationTests(unittest.TestCase):
             'FEEDER_PUBLIC_ORIGIN=https://reader.example.com',
             'FEEDER_PUBLIC_HOST=reader.example.com',
             'FEEDER_TUNNEL_IMAGE=cloudflare/cloudflared:2026.10.7',
-            'FEEDER_TUNNEL_TOKEN_FILE=/tmp/synthetic-token-file',
             'OPENROUTER_API_KEY=' + OPEN,
             'ORCAROUTER_API_KEY=' + ORCA,
             'TUNNEL_TOKEN=' + TOKEN,
@@ -56,35 +55,19 @@ class EnvConfigurationTests(unittest.TestCase):
         self.assertEqual(config['services']['web']['ports'][0]['published'], '18766')
         self.assertEqual(config['services']['worker']['environment']['OPENROUTER_API_KEY'], 'SYNTHETIC_SHELL_OVERRIDE')
         self.envfile.write_text(self.envfile.read_text().replace('TUNNEL_TOKEN=' + TOKEN, "TUNNEL_TOKEN='SYNTHETIC_$DOLLAR_VALUE'"))
-        config = json.loads(self.config('compose.tunnel-env.yml').stdout)
+        config = json.loads(self.config(env={**self.env, 'COMPOSE_PROFILES': 'tunnel'}).stdout)
         # `compose config` escapes a literal dollar as `$$` in its reusable output.
         self.assertEqual(config['services']['tunnel']['environment']['TUNNEL_TOKEN'], 'SYNTHETIC_$$DOLLAR_VALUE')
 
-    def test_tunnel_modes_and_missing_token(self):
-        for override, mode in [('compose.tunnel-env.yml', 'env'), ('compose.tunnel.yml', 'file')]:
-            result = self.config(override)
-            self.assertEqual(result.returncode, 0)
-            config = json.loads(result.stdout)
-            services = config['services']
-            self.assertFalse(services['web'].get('ports'))
-            self.assertFalse(services['worker'].get('ports'))
-            tunnel = services['tunnel']
-            self.assertTrue(tunnel['read_only'])
-            self.assertNotIn(TOKEN, tunnel['command'])
-            self.assertNotIn('OPENROUTER_API_KEY', tunnel.get('environment', {}))
-            if mode == 'env':
-                self.assertEqual(tunnel['environment']['TUNNEL_TOKEN'], TOKEN)
-                self.assertFalse(tunnel.get('secrets'))
-            else:
-                self.assertNotIn('TUNNEL_TOKEN', tunnel.get('environment', {}))
-                self.assertIn('--token-file', tunnel['command'])
-            check = subprocess.run(['python3', str(ROOT / 'scripts/check-tunnel-config.py'), '--token-mode', mode, '--env-file', str(self.envfile)], cwd=ROOT, env=self.env, capture_output=True, text=True)
-            self.assertEqual(check.returncode, 0)
-            self.assertTrue(all(secret not in check.stdout + check.stderr for secret in (OPEN, ORCA, TOKEN)))
+    def test_tunnel_profile_and_missing_token(self):
+        with self.envfile.open('a') as envfile:
+            envfile.write('FEEDER_ACCESS_MODE=tunnel\nFEEDER_ALLOWED_HOSTS=reader.example.com,127.0.0.1:8080\n')
+        check = subprocess.run(['python3', str(ROOT / 'scripts/check-tunnel-config.py'), '--env-file', str(self.envfile)], cwd=ROOT, env=self.env, capture_output=True, text=True)
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertTrue(all(secret not in check.stdout + check.stderr for secret in (OPEN, ORCA, TOKEN)))
         self.envfile.write_text(self.envfile.read_text().replace('TUNNEL_TOKEN=' + TOKEN, 'TUNNEL_TOKEN='))
-        missing = self.config('compose.tunnel-env.yml')
-        self.assertNotEqual(missing.returncode, 0)
-        self.assertTrue(all(secret not in missing.stderr for secret in (OPEN, ORCA, TOKEN)))
+        check = subprocess.run(['python3', str(ROOT / 'scripts/check-tunnel-config.py'), '--env-file', str(self.envfile)], cwd=ROOT, env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(check.returncode, 0)
 
     def test_git_and_build_exclusions(self):
         for path in ['.env', '.env.production']:

@@ -72,7 +72,7 @@ Linuxコンテナを正式な実行環境として `linux-container-runtime` を
 
 ## `.env` と外部サービス用キー
 
-移植元と同じ `TUNNEL_TOKEN`、`OPENROUTER_API_KEY`、`ORCAROUTER_API_KEY` を Compose の `.env` から設定できるようにした。Tunnel の従来のファイル方式も利用できる。外部AIキーを渡す構成は用意したが、AIプロバイダーの機能自体は未移植。Feeder自身のAPIキーは従来どおり画面発行とハッシュ保存を使う。[実行設定](runtime-config.md)と[合成データの検証](verification-env-runtime-configuration.md)を参照。
+`TUNNEL_TOKEN`、`OPENROUTER_API_KEY`、`ORCAROUTER_API_KEY` をComposeの `.env` から設定できる。Tunnelは単一の `compose.yml` のprofileで起動する。外部AIキーを渡す構成は用意したが、AIプロバイダー機能自体は未移植。Feeder自身のAPIキーは従来どおり画面発行とハッシュ保存を使う。[実行設定](runtime-config.md)と[合成データの検証](verification-env-runtime-configuration.md)を参照。
 
 ## RSS 購読先の URL 修正
 
