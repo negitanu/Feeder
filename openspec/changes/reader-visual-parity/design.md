@@ -1,0 +1,2 @@
+## Design
+Adapt the source color tokens to existing React CSS variables. Keep sidebar resizing and list/detail state. Reduce large desktop gutters and present readable bordered article cards. Use one imported SVG for the header and favicon. Provide a focusable main region and skip link. Keep 320px support and light/dark/system appearance. Honor reduced motion. This phase covers shared appearance; legacy URL/history, research screens and category routing remain separate work.
