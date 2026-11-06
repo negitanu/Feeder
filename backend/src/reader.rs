@@ -1,7 +1,12 @@
 use super::*;
 use axum::extract::RawQuery;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use ring::hmac;
 use rusqlite::types::Value;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const VISITS: &str = "CREATE TABLE article_visits (article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE, visited_at TEXT NOT NULL)";
 pub fn recognized_v4(objects: &[(String, String, Option<String>)]) -> bool {
@@ -51,6 +56,8 @@ pub struct Filters {
 pub struct ListQuery {
     limit: Option<u32>,
     offset: Option<u32>,
+    pagination: Option<String>,
+    cursor: Option<String>,
     #[serde(skip)]
     filters: Filters,
 }
@@ -68,6 +75,8 @@ fn parse_query(raw: &str) -> Result<ListQuery, StatusCode> {
         match key.as_ref() {
             "limit" => q.limit = Some(value.parse().map_err(|_| StatusCode::BAD_REQUEST)?),
             "offset" => q.offset = Some(value.parse().map_err(|_| StatusCode::BAD_REQUEST)?),
+            "pagination" => q.pagination = Some(value.into_owned()),
+            "cursor" => q.cursor = Some(value.into_owned()),
             "unread" | "starred" | "history" => {
                 let v = match value.as_ref() {
                     "true" => true,
@@ -93,6 +102,10 @@ fn parse_query(raw: &str) -> Result<ListQuery, StatusCode> {
 pub struct Listing {
     items: Vec<Article>,
     total: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_more: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_cursor: Option<Option<String>>,
 }
 #[derive(Serialize)]
 pub struct Updated {
@@ -237,6 +250,7 @@ fn scope(db: &Connection, f: &Filters) -> Result<Scope, StatusCode> {
             }
             parsed.push(id)
         }
+        parsed.sort_unstable();
         c.push(format!(
             "feed_id IN ({})",
             vec!["?"; parsed.len()].join(",")
@@ -317,14 +331,220 @@ fn scope(db: &Connection, f: &Filters) -> Result<Scope, StatusCode> {
         order,
     })
 }
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Cursor {
+    version: u8,
+    expires: u64,
+    scope: String,
+    high_water: i64,
+    last_id: i64,
+    // Julian day for date order; stored visit timestamp for recent order; null sorts last.
+    key: Option<serde_json::Value>,
+}
+
+fn cursor_key() -> Result<hmac::Key, StatusCode> {
+    static KEY: OnceLock<Option<[u8; 32]>> = OnceLock::new();
+    let bytes = KEY
+        .get_or_init(|| {
+            let mut bytes = [0; 32];
+            getrandom::getrandom(&mut bytes).ok().map(|_| bytes)
+        })
+        .as_ref()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(hmac::Key::new(hmac::HMAC_SHA256, bytes))
+}
+fn now_seconds() -> Result<u64, StatusCode> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .as_secs())
+}
+fn encode_cursor(cursor: &Cursor) -> Result<String, StatusCode> {
+    let data = serde_json::to_vec(cursor).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let signature = hmac::sign(&cursor_key()?, &data);
+    Ok(format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(data),
+        URL_SAFE_NO_PAD.encode(signature.as_ref())
+    ))
+}
+fn decode_cursor(token: &str) -> Result<Cursor, StatusCode> {
+    if token.len() > 2048 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let (payload, signature) = token.split_once('.').ok_or(StatusCode::BAD_REQUEST)?;
+    let data = URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let signature = URL_SAFE_NO_PAD
+        .decode(signature)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    if data.len() > 1024 || signature.len() != 32 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    hmac::verify(&cursor_key()?, &data, &signature).map_err(|_| StatusCode::CONFLICT)?;
+    let cursor: Cursor = serde_json::from_slice(&data).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if cursor.version != 1 || cursor.last_id <= 0 || cursor.high_water < cursor.last_id {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if now_seconds()? >= cursor.expires {
+        return Err(StatusCode::CONFLICT);
+    }
+    Ok(cursor)
+}
+fn scope_fingerprint(
+    db: &Connection,
+    scope: &Scope,
+    filters: &Filters,
+) -> Result<String, StatusCode> {
+    let timezone = settings::read(db)?.display_timezone;
+    let members = if let Some(folder) = filters.folder_id {
+        let mut stmt = db
+            .prepare("SELECT id FROM feeds WHERE folder_id=? ORDER BY id")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        stmt.query_map([folder], |r| r.get::<_, i64>(0))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        Vec::new()
+    };
+    let data = format!(
+        "{:?}",
+        (&scope.sql, &scope.values, &scope.order, timezone, members)
+    );
+    Ok(URL_SAFE_NO_PAD.encode(Sha256::digest(data.as_bytes())))
+}
+
+fn cursor_listing(db: &Connection, q: &ListQuery) -> Result<Listing, StatusCode> {
+    let previous = q.cursor.as_deref().map(decode_cursor).transpose()?;
+    let scope = scope(db, &q.filters).map_err(|error| {
+        if previous.is_some() && error == StatusCode::BAD_REQUEST {
+            StatusCode::CONFLICT
+        } else {
+            error
+        }
+    })?;
+    let fingerprint = scope_fingerprint(db, &scope, &q.filters)?;
+    if previous
+        .as_ref()
+        .is_some_and(|cursor| cursor.scope != fingerprint)
+    {
+        return Err(StatusCode::CONFLICT);
+    }
+    let high_water = if let Some(cursor) = &previous {
+        cursor.high_water
+    } else {
+        db.query_row("SELECT coalesce(max(id),0) FROM articles", [], |row| {
+            row.get(0)
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    let mut values = scope.values.clone();
+    let conjunction = if scope.sql.is_empty() {
+        " WHERE "
+    } else {
+        " AND "
+    };
+    let mut where_sql = format!("{}{conjunction}id <= ?", scope.sql);
+    values.push(high_water.into());
+    let total: i64 = db
+        .query_row(
+            &format!("SELECT count(*) FROM articles{where_sql}"),
+            rusqlite::params_from_iter(values.iter()),
+            |r| r.get(0),
+        )
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let recent = scope.order.starts_with("(SELECT visited_at");
+    let ascending = scope.order.contains(" ASC");
+    let expr = if recent {
+        "(SELECT visited_at FROM article_visits WHERE article_id=articles.id)"
+    } else {
+        "julianday(published)"
+    };
+    if let Some(cursor) = &previous {
+        let op = if ascending { ">" } else { "<" };
+        let key = match (&cursor.key, recent) {
+            (None, _) => Value::Null,
+            (Some(value), true) => {
+                Value::Text(value.as_str().ok_or(StatusCode::BAD_REQUEST)?.to_owned())
+            }
+            (Some(value), false) => Value::Real(value.as_f64().ok_or(StatusCode::BAD_REQUEST)?),
+        };
+        if key == Value::Null {
+            where_sql.push_str(&format!(" AND {expr} IS NULL AND id {op} ?"));
+            values.push(cursor.last_id.into());
+        } else {
+            where_sql.push_str(&format!(" AND ({expr} IS NULL OR ({expr} IS NOT NULL AND ({expr} {op} ? OR ({expr} = ? AND id {op} ?))))"));
+            values.extend([key.clone(), key, cursor.last_id.into()]);
+        }
+    }
+    let limit = q.limit.unwrap_or(20) as usize;
+    values.push(((limit + 1) as i64).into());
+    let mut stmt = db.prepare(&format!("SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id),{expr} FROM articles{where_sql} ORDER BY {} LIMIT ?", scope.order)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut rows = stmt
+        .query_map(rusqlite::params_from_iter(values.iter()), |r| {
+            let key = if recent {
+                r.get::<_, Option<String>>(8)?.map(serde_json::Value::from)
+            } else {
+                r.get::<_, Option<f64>>(8)?.map(serde_json::Value::from)
+            };
+            Ok((article(r)?, key))
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let has_more = rows.len() > limit;
+    rows.truncate(limit);
+    let next_cursor = if has_more {
+        let (last, key) = rows.last().ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        let expires = if let Some(cursor) = &previous {
+            cursor.expires
+        } else {
+            now_seconds()? + 1800
+        };
+        Some(encode_cursor(&Cursor {
+            version: 1,
+            expires,
+            scope: fingerprint,
+            high_water,
+            last_id: last.id,
+            key: key.clone(),
+        })?)
+    } else {
+        None
+    };
+    Ok(Listing {
+        items: rows.into_iter().map(|(item, _)| item).collect(),
+        total,
+        has_more: Some(has_more),
+        next_cursor: Some(next_cursor),
+    })
+}
 pub async fn list(
     State(db): State<Db>,
     RawQuery(raw): RawQuery,
 ) -> Result<Json<Listing>, StatusCode> {
     let q = parse_query(raw.as_deref().unwrap_or(""))?;
-    let db = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut db = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if q.limit.is_some_and(|n| n == 0 || n > 100) {
         return Err(StatusCode::BAD_REQUEST);
+    }
+    if q.pagination.as_deref().is_some_and(|mode| mode != "cursor")
+        || (q.cursor.is_some() && q.pagination.is_none())
+        || (q.pagination.is_some() && q.offset.is_some())
+        || q.cursor.as_deref() == Some("")
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if q.pagination.is_some() {
+        let tx = db
+            .transaction()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let result = cursor_listing(&tx, &q)?;
+        tx.commit().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(Json(result));
     }
     let s = scope(&db, &q.filters)?;
     let total = db
@@ -343,7 +563,12 @@ pub async fn list(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .collect::<Result<_, _>>()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(Listing { items, total }))
+    Ok(Json(Listing {
+        items,
+        total,
+        has_more: None,
+        next_cursor: None,
+    }))
 }
 pub async fn visit(
     State(db): State<Db>,
@@ -373,6 +598,7 @@ pub async fn visit(
 #[serde(deny_unknown_fields)]
 pub struct ReadAll {
     filters: Filters,
+    expected_timezone: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -381,6 +607,18 @@ pub struct Bulk {
     read: Option<bool>,
     starred: Option<bool>,
     filters: Filters,
+    expected_timezone: Option<String>,
+}
+fn check_timezone(db: &Connection, expected: Option<&str>) -> Result<(), StatusCode> {
+    if let Some(expected) = expected {
+        if !matches!(expected, "UTC" | "Asia/Tokyo") {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        if settings::read(db)?.display_timezone != expected {
+            return Err(StatusCode::CONFLICT);
+        }
+    }
+    Ok(())
 }
 pub async fn read_all(
     State(db): State<Db>,
@@ -394,6 +632,7 @@ pub async fn read_all(
     let tx = db
         .transaction()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    check_timezone(&tx, input.expected_timezone.as_deref())?;
     let s = scope(&tx, &input.filters)?;
     let updated = tx
         .execute(
@@ -424,6 +663,7 @@ pub async fn bulk_state(
     let tx = db
         .transaction()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    check_timezone(&tx, input.expected_timezone.as_deref())?;
     let s = scope(&tx, &input.filters)?;
     let w = format!(
         "{}{} id IN ({})",
@@ -518,6 +758,236 @@ mod tests {
             .iter()
             .map(|a| a["id"].as_i64().unwrap())
             .collect()
+    }
+    #[tokio::test]
+    async fn offset_baseline_exposes_shifts_and_preserves_ordering_contract() {
+        let (_dir, db) = fixture();
+        let (_, first) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?limit=2&order=new",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&first), vec![5, 4]);
+        db.lock()
+            .unwrap()
+            .execute("DELETE FROM articles WHERE id=5", [])
+            .unwrap();
+        let (_, after_delete) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?limit=2&offset=2&order=new",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&after_delete), vec![1, 3]); // Surviving id 2 shifted into the previous page.
+
+        let (_dir, db) = fixture();
+        db.lock().unwrap().execute("INSERT INTO articles(id,title,content,url,published,feed_id) VALUES (6,'new','','https://example.org','2026-11-07T00:00:00Z',1)", []).unwrap();
+        let (_, after_insert) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?limit=2&offset=2&order=new",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&after_insert), vec![4, 2]); // Previously returned id 4 is repeated.
+        db.lock()
+            .unwrap()
+            .execute(
+                "UPDATE articles SET published='2026-11-06T10:00:00+09:00' WHERE id=5",
+                [],
+            )
+            .unwrap();
+        let (_, dates) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?limit=100&order=old",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&dates), vec![1, 2, 4, 5, 6, 3]); // Equal instants use id; unknown dates are last.
+        db.lock().unwrap().execute("INSERT INTO article_visits(article_id,visited_at) VALUES (1,'2026-11-06T01:00:00Z'),(2,'2026-11-06T01:00:00Z'),(3,'2026-11-05T01:00:00Z')", []).unwrap();
+        let (_, history) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?history=true&order=recent&limit=100",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&history), vec![2, 1, 3]);
+    }
+    #[tokio::test]
+    async fn cursor_traverses_survivors_and_excludes_new_articles() {
+        for order in ["new", "old", "recent"] {
+            let (_dir, db) = fixture();
+            db.lock()
+                .unwrap()
+                .execute(
+                    "UPDATE articles SET published='2026-11-06T10:00:00+09:00' WHERE id=5",
+                    [],
+                )
+                .unwrap();
+            db.lock().unwrap().execute("INSERT INTO article_visits(article_id,visited_at) VALUES (1,'2026-11-06T01:00:00Z'),(2,'2026-11-06T01:00:00Z'),(3,'2026-11-05T01:00:00Z')", []).unwrap();
+            let query = format!("order={order}&limit=2");
+            let (_, expected) = call(
+                db.clone(),
+                "GET",
+                &format!("/api/articles?order={order}&limit=100"),
+                serde_json::Value::Null,
+            )
+            .await;
+            let expected = ids(&expected);
+            let (_, first) = call(
+                db.clone(),
+                "GET",
+                &format!("/api/articles?pagination=cursor&{query}"),
+                serde_json::Value::Null,
+            )
+            .await;
+            let first_ids = ids(&first);
+            assert_eq!(first_ids, expected[..2]);
+            let token = first["next_cursor"].as_str().unwrap().to_owned();
+            {
+                let c = db.lock().unwrap();
+                c.execute("DELETE FROM articles WHERE id=?", [first_ids[0]])
+                    .unwrap();
+                c.execute("INSERT INTO articles(id,title,content,url,published,feed_id) VALUES (6,'new','','https://example.org','2000-01-01T00:00:00Z',1)", []).unwrap();
+            }
+            let mut result = first_ids;
+            let mut next = Some(token);
+            while let Some(token) = next {
+                let (status, page) = call(
+                    db.clone(),
+                    "GET",
+                    &format!("/api/articles?pagination=cursor&{query}&cursor={token}"),
+                    serde_json::Value::Null,
+                )
+                .await;
+                assert_eq!(status, StatusCode::OK, "{order}");
+                result.extend(ids(&page));
+                next = page["next_cursor"].as_str().map(str::to_owned);
+                assert_eq!(page["has_more"].as_bool(), Some(next.is_some()));
+            }
+            assert_eq!(result, expected, "{order}");
+        }
+    }
+    #[tokio::test]
+    async fn cursor_rejects_scope_changes_tampering_expiry_and_mixed_pagination() {
+        let (_dir, db) = fixture();
+        let (_, first) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?pagination=cursor&folder_id=1&limit=1",
+            serde_json::Value::Null,
+        )
+        .await;
+        let token = first["next_cursor"].as_str().unwrap();
+        for query in [
+            format!("pagination=cursor&folder_id=1&limit=1&cursor={token}&offset=0"),
+            format!("folder_id=1&cursor={token}"),
+            "pagination=cursor&cursor=".into(),
+        ] {
+            assert_eq!(
+                call(
+                    db.clone(),
+                    "GET",
+                    &format!("/api/articles?{query}"),
+                    serde_json::Value::Null
+                )
+                .await
+                .0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        assert_eq!(
+            call(
+                db.clone(),
+                "GET",
+                &format!(
+                    "/api/articles?pagination=cursor&folder_id=1&limit=1&q=other&cursor={token}"
+                ),
+                serde_json::Value::Null
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        let (payload, signature) = token.split_once('.').unwrap();
+        let mut signature = URL_SAFE_NO_PAD.decode(signature).unwrap();
+        signature[0] ^= 1;
+        let altered = format!("{payload}.{}", URL_SAFE_NO_PAD.encode(signature));
+        assert_eq!(
+            call(
+                db.clone(),
+                "GET",
+                &format!("/api/articles?pagination=cursor&folder_id=1&cursor={altered}"),
+                serde_json::Value::Null
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        let mut expired = decode_cursor(token).unwrap();
+        expired.expires = 1;
+        let expired = encode_cursor(&expired).unwrap();
+        assert_eq!(
+            call(
+                db.clone(),
+                "GET",
+                &format!("/api/articles?pagination=cursor&folder_id=1&cursor={expired}"),
+                serde_json::Value::Null
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        db.lock()
+            .unwrap()
+            .execute(
+                "UPDATE reader_settings SET display_timezone='Asia/Tokyo'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            call(
+                db.clone(),
+                "GET",
+                &format!("/api/articles?pagination=cursor&folder_id=1&cursor={token}"),
+                serde_json::Value::Null
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        db.lock()
+            .unwrap()
+            .execute("UPDATE reader_settings SET display_timezone='UTC'", [])
+            .unwrap();
+        db.lock()
+            .unwrap()
+            .execute("UPDATE feeds SET folder_id=1 WHERE id=2", [])
+            .unwrap();
+        assert_eq!(
+            call(
+                db.clone(),
+                "GET",
+                &format!("/api/articles?pagination=cursor&folder_id=1&cursor={token}"),
+                serde_json::Value::Null
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        let (_, legacy) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?limit=1&offset=1",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert!(legacy.get("has_more").is_none());
     }
     #[tokio::test]
     async fn detailed_filters_dates_order_and_invalid_scopes() {
@@ -621,6 +1091,69 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+    #[tokio::test]
+    async fn bulk_timezone_conflict_is_atomic_and_legacy_requests_work() {
+        let (_dir, db) = fixture();
+        db.lock()
+            .unwrap()
+            .execute(
+                "UPDATE reader_settings SET display_timezone='Asia/Tokyo'",
+                [],
+            )
+            .unwrap();
+        for (path, body) in [
+            (
+                "/api/articles/read-all",
+                serde_json::json!({"filters":{"published_from":"2026-11-06"},"expected_timezone":"UTC"}),
+            ),
+            (
+                "/api/articles/bulk-state",
+                serde_json::json!({"ids":[1],"read":true,"starred":true,"filters":{"published_from":"2026-11-06"},"expected_timezone":"UTC"}),
+            ),
+        ] {
+            assert_eq!(
+                call(db.clone(), "POST", path, body).await.0,
+                StatusCode::CONFLICT
+            );
+        }
+        let counts: (i64, i64) = db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT sum(is_read),sum(is_starred) FROM articles",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(counts, (0, 0));
+        assert_eq!(
+            call(
+                db.clone(),
+                "POST",
+                "/api/articles/read-all",
+                serde_json::json!({"filters":{},"expected_timezone":"invalid"})
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(call(db.clone(), "POST", "/api/articles/bulk-state", serde_json::json!({"ids":[1],"read":true,"filters":{},"expected_timezone":"Asia/Tokyo"})).await.0, StatusCode::OK);
+        assert_eq!(
+            call(
+                db.clone(),
+                "POST",
+                "/api/articles/read-all",
+                serde_json::json!({"filters":{"feed_id":2}})
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+        let c = db.lock().unwrap();
+        assert!(lookup(&c, 1).unwrap().is_read);
+        assert!(lookup(&c, 2).unwrap().is_read);
+        assert!(!lookup(&c, 3).unwrap().is_read);
     }
     #[tokio::test]
     async fn bulk_atomicity_scope_and_no_history_side_effects() {
@@ -747,8 +1280,10 @@ mod tests {
         }
         c.execute("DROP TABLE reader_settings", []).unwrap();
         c.execute("DROP TABLE article_visits", []).unwrap();
-        c.execute_batch("DROP TABLE api_keys; DROP TABLE api_rate_settings;")
-            .unwrap();
+        c.execute_batch(
+            "DROP TABLE api_keys; DROP TABLE api_rate_settings;",
+        )
+        .unwrap();
         c.pragma_update(None, "user_version", 3).unwrap();
         drop(c);
         let migrated = open_db(&path, false).unwrap();

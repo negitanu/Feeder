@@ -1,14 +1,14 @@
 ## 1. Baseline and contracts
 
-- [ ] 1.1 Check the dev CI result or record unavailable access with local baseline results; finalize initial cursor-mode/error contracts in the design and API docs before edits.
-- [ ] 1.2 Add deterministic fixture cases demonstrating current insertion/deletion skips, date ties/NULLs/offsets and history ordering.
+- [x] 1.1 Check the dev CI result or record unavailable access with local baseline results; finalize initial cursor-mode/error contracts in the design and API docs before edits.
+- [x] 1.2 Add deterministic fixture cases demonstrating current insertion/deletion skips, date ties/NULLs/offsets and history ordering.
 
 ## 2. Implementation
 
-- [ ] 2.1 Implement canonical scope fingerprints and bounded versioned authenticated tokens with explicit expiry/restart behavior.
-- [ ] 2.2 Implement consistent first-batch high-water reads and keyset traversal while retaining offset/public v1 compatibility.
-- [ ] 2.3 Validate optional expected timezone atomically in scoped mutations and submit it from the browser.
-- [ ] 2.4 Separate continuation error/retry from initial reload, add keyboard load without observer, preserve loaded reader state and reject stale responses.
+- [x] 2.1 Implement canonical scope fingerprints and bounded versioned authenticated tokens with explicit expiry/restart behavior.
+- [x] 2.2 Implement consistent first-batch high-water reads and keyset traversal while retaining offset/public v1 compatibility.
+- [x] 2.3 Validate optional expected timezone atomically in scoped mutations and submit it from the browser.
+- [x] 2.4 Separate continuation error/retry from initial reload, add keyboard load without observer, preserve loaded reader state and reject stale responses.
 
 ## 3. Acceptance
 

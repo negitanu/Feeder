@@ -22,4 +22,4 @@ None. Existing requirements remain; this capability adds the missing stronger co
 
 ## Impact
 
-`backend/src/reader.rs`, shared reader settings, `frontend/src/App.tsx`, browser tests and API documentation. This is an implementation-ready handoff proposal; no runtime change is included in its preparation. Legacy no-script navigation, floating detail and research filters are separate work.
+`backend/src/reader.rs`, shared reader settings, `frontend/src/App.tsx`, browser tests and API documentation. This proposal defines the next reader improvement. Legacy no-script navigation, floating detail and research filters are separate work.
