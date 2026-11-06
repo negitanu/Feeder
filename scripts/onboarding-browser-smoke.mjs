@@ -9,13 +9,13 @@ try {
  const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
  await browserSession(page,origin);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(origin);await page.getByRole('button',{name:'集める',exact:true}).click();
+ await page.goto(origin);await page.getByRole('button',{name:'設定',exact:true}).click();
  await page.getByRole('spinbutton',{name:'更新間隔（秒）'}).fill('60');
  await page.getByRole('checkbox',{name:'自動収集を有効にする'}).check();
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/collection/settings')&&r.request().method()==='PATCH');
  await page.getByRole('button',{name:'設定を保存',exact:true}).click();assert.equal((await saved).status(),200);
  let settings=await(await page.request.get(origin+'/api/collection/settings')).json();assert.equal(settings.interval_seconds,60);assert.equal(settings.enabled,true);
- await page.reload();await page.getByRole('button',{name:'集める',exact:true}).click();await page.getByRole('checkbox',{name:'自動収集を有効にする'}).waitFor();
+ await page.reload();await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('checkbox',{name:'自動収集を有効にする'}).waitFor();
  await page.waitForFunction(()=>document.querySelector('input[type=checkbox]')?.checked===true);
  const before=(await(await page.request.get(origin+'/api/library')).json()).feeds.length;
  const xml='<?xml version="1.0"?><opml version="2.0"><body><outline text="調査"><outline text="Web"><outline text="A &amp; B" xmlUrl="https://example.org/feeder-onboarding.xml?a=1&amp;b=2"/><outline text="duplicate" xmlUrl="https://example.org/feeder-onboarding.xml?a=1&amp;b=2#fragment"/><outline text="unsafe" xmlUrl="http://127.0.0.1/private"/></outline></outline></body></opml>';

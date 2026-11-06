@@ -6,7 +6,7 @@
 
 - `OPENROUTER_API_KEY` と `ORCAROUTER_API_KEY` は移植元と同じ名前です。Web と worker へ渡されますが、AI プロバイダー機能はまだ未実装で、この値だけでは有効になりません。
 - `TUNNEL_TOKEN` は `docker compose` で Cloudflare Tunnel を起動するためのトークンです。
-- Feeder の公開 API にアクセスするための Bearer キーは「集める」画面で発行します。その値をクライアント側の `.env` や環境変数に保管できます。外部 AI のキーや `TUNNEL_TOKEN` を Feeder API の認証に使うことはできません。
+- Feeder の公開 API にアクセスするための Bearer キーは「設定」画面で発行します。その値をクライアント側の `.env` や環境変数に保管できます。外部 AI のキーや `TUNNEL_TOKEN` を Feeder API の認証に使うことはできません。
 
 `.env` は Git とイメージのビルド対象から除外されていますが、暗号化されません。利用者のみが読める権限で保管してください。環境変数方式の値は権限を持つ利用者がコンテナ設定や `docker compose config` で参照できるため、出力を共有しないでください。設定エクスポートはこれらのキーを含みません。
 

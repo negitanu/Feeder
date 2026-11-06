@@ -5,7 +5,7 @@ const require=createRequire(new URL('../frontend/package.json',import.meta.url))
 const {chromium}=require('@playwright/test');const browser=await chromium.launch();
 try{
  const context=await browser.newContext();const page=await context.newPage();const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
- await page.goto(origin);await page.getByRole('button',{name:'集める',exact:true}).click();
+ await page.goto(origin);await page.getByRole('button',{name:'設定',exact:true}).click();
  const before=(await(await context.request.get(origin+'/api/library')).json()).feeds.length;
  await page.getByRole('textbox',{name:'サイトまたはフィード URL'}).fill(process.env.FEEDER_LIVE_FEED);
  await page.getByRole('button',{name:'フィードを探す',exact:true}).click();

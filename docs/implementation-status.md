@@ -91,3 +91,7 @@ RSSフィードごとに60〜86400秒の収集間隔か全体設定の継承を�
 ## FeedAstrolabeの共通UI
 
 移植元の配色・コンパクトな記事カード・選択ナビゲーション・共通ブランドマークとfavicon・本文スキップ・動きの低減をReactへ移植。[検証と残る差分](verification-reader-visual-parity.md)を参照。
+
+## 設定画面への統合
+
+独立した「集める」を廃止し、購読・自動収集・OPMLを表示設定・APIキーと同じ設定画面へ統合。項目リンクから移動できる。[検証記録](verification-unified-settings.md)。

@@ -24,6 +24,7 @@
 .article-open{padding:12px 4px;gap:10px}.card-copy strong{font-size:15px}.card-meta{font-size:11px}.excerpt{font-size:12px;line-height:1.6}
 .unread-mark{background:var(--accent)}.card-copy{gap:4px}
 .collection-section{border-radius:10px}.collection-page h1{font-size:24px}.collection-section h2{font-size:18px}
+.settings-heading,.settings-jumps{max-width:720px;margin:0 auto 20px}.settings-heading h1{font-size:24px;margin:0 0 8px}.settings-heading p{font-size:13px;color:var(--muted)}.settings-jumps{display:flex;flex-wrap:wrap;gap:8px}.settings-jumps a{padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--accent);font-size:13px;text-decoration:none}.settings-jumps a:hover{background:var(--accent-soft)}[id^=settings-]{scroll-margin-top:150px}[id^=settings-]:focus{outline:2px solid var(--accent);outline-offset:4px}
 .settings-form input,.settings-form select,.collection-form input,.key-issue-form input,.key-issue-form select{border-radius:6px}
 .settings-form button,.collection-form button,.folder-form button,.collection-card>button,.export-settings,.key-issue-form button,.issued-key button{color:var(--on-accent)!important}
 .detail-toolbar{background:var(--surface)}

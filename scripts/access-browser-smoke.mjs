@@ -15,14 +15,14 @@ try {
  assert.equal((await anonymous.post(origin+`/api/articles/${id}/state`,{data:{read:false}})).status(),403);
  assert.equal((await page.request.post(origin+`/api/articles/${id}/state`,{headers:{'X-Feeder-CSRF':''},data:{read:false}})).status(),403);
  assert.equal((await page.request.post(origin+`/api/articles/${id}/state`,{headers:{Origin:'https://attacker.invalid'},data:{read:false}})).status(),403);
- await page.goto(origin);await page.getByRole('button',{name:'集める',exact:true}).click();await page.getByRole('heading',{name:'APIキー',exact:true}).waitFor();
+ await page.goto(origin);await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('heading',{name:'APIキー',exact:true}).waitFor();
  await page.getByRole('textbox',{name:'APIキー名',exact:true}).fill('検証読み取り');await page.getByRole('button',{name:'APIキーを発行',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor();const readToken=await page.getByLabel('発行したAPIキー',{exact:true}).innerText();
  const readHeaders={Authorization:'Bearer '+readToken};
  const list=await anonymous.get(origin+'/api/v1/articles?after_id=0&limit=2',{headers:readHeaders});assert.equal(list.status(),200);const first=await list.json();assert.equal(first.data.length,2);assert.ok(first.data[0].id<first.data[1].id);
  const next=await(await anonymous.get(origin+'/api/v1/articles?after_id='+first.data.at(-1).id+'&limit=2',{headers:readHeaders})).json();assert.ok(next.data.every(a=>a.id>first.data.at(-1).id));
  assert.equal((await anonymous.patch(origin+`/api/v1/articles/${id}`,{headers:readHeaders,data:{is_read:false}})).status(),403);
  const metadata=await(await page.request.get(origin+'/api/keys')).text();assert.ok(!metadata.includes(readToken));assert.ok(!metadata.includes('token_hash'));
- await page.getByRole('button',{name:'キーを隠す',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor({state:'hidden'});await page.reload();await page.getByRole('button',{name:'集める',exact:true}).click();assert.equal(await page.getByLabel('発行したAPIキー',{exact:true}).count(),0);
+ await page.getByRole('button',{name:'キーを隠す',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor({state:'hidden'});await page.reload();await page.getByRole('button',{name:'設定',exact:true}).click();assert.equal(await page.getByLabel('発行したAPIキー',{exact:true}).count(),0);
  await page.getByRole('textbox',{name:'APIキー名',exact:true}).fill('検証書き込み');await page.getByRole('combobox',{name:'APIキーの権限',exact:true}).selectOption('write');await page.getByRole('button',{name:'APIキーを発行',exact:true}).click();await page.getByLabel('発行したAPIキー',{exact:true}).waitFor();const writeToken=await page.getByLabel('発行したAPIキー',{exact:true}).innerText(),writeHeaders={Authorization:'Bearer '+writeToken};
  const historyBefore=await(await page.request.get(origin+'/api/articles?history=true&limit=100')).json();const state=articles.items[0];
  assert.equal((await anonymous.patch(origin+`/api/v1/articles/${id}`,{headers:writeHeaders,data:{is_read:state.is_read,is_starred:state.is_starred}})).status(),200);

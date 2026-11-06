@@ -10,7 +10,7 @@ try {
  const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
  await browserSession(page,origin);
  await page.goto(origin);
- await page.getByRole('button',{name:'集める',exact:true}).click();
+ await page.getByRole('button',{name:'設定',exact:true}).click();
  await page.getByRole('textbox',{name:'フォルダー名',exact:true}).fill('検証フォルダー');
  await page.getByRole('button',{name:'作成',exact:true}).click();
  await page.getByRole('button',{name:'読む',exact:true}).click();
@@ -35,7 +35,7 @@ try {
  await page.getByRole('button',{name:'検証購読の操作',exact:true}).click();
  await page.getByRole('button',{name:'再開',exact:true}).click();
  library=await (await page.request.get(origin+'/api/library')).json();assert.equal(library.feeds.find(f=>f.id===feed.id).paused,false);
- await page.getByRole('button',{name:'集める',exact:true}).click();
+ await page.getByRole('button',{name:'設定',exact:true}).click();
  await page.getByRole('textbox',{name:'サイトまたはフィード URL',exact:true}).fill('http://127.0.0.1:8080/private');
  const rejected=page.waitForResponse(r=>r.url().endsWith('/api/discover')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'フィードを探す',exact:true}).click();
