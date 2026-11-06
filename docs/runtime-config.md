@@ -6,3 +6,8 @@
 - `FEEDER_DEMO=1` opts into sample articles when the database is empty.
 
 Run `feeder` for Web, `feeder worker` for continuous collection, or `feeder worker --once` for one pass. SIGTERM and SIGINT stop new worker jobs and let the current fetch finish; Web drains active requests. SQLite connections wait up to five seconds for database locks. Container publication should remain loopback-only unless an authenticated access boundary is added.
+
+- `FEEDER_ACCESS_MODE`: Webは `local`（既定）または `tunnel`。localはloopback/localhost/webのHostへ制限します。tunnelは未公開originとCloudflare Access/Protect with Accessを前提とします。
+- `FEEDER_PUBLIC_ORIGIN`: tunnelで必須の正確なHTTPS origin（末尾スラッシュなし）。転送ヘッダーから推測しません。
+
+詳細と公開構成の検証は[アクセス制御](api-access-control.md)を参照してください。workerはブラウザ認証の設定を必要としません。

@@ -66,6 +66,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Linux backend tests
         run: docker build --target backend-test .
+      - name: Validate unpublished tunnel configuration
+        env:
+          FEEDER_PUBLIC_ORIGIN: https://feeder.example.com
+          FEEDER_PUBLIC_HOST: feeder.example.com
+          FEEDER_TUNNEL_IMAGE: cloudflare/cloudflared:2026.10.7
+          FEEDER_TUNNEL_TOKEN_FILE: /tmp/unused-test-token-reference
+        run: python3 scripts/check-tunnel-config.py
       - name: Build Linux runtime
         run: docker compose --env-file /dev/null build
       - uses: actions/setup-node@v4
@@ -74,4 +81,4 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npx --prefix frontend playwright install --with-deps chromium
       - name: Isolated Compose acceptance
-        run: FEEDER_BROWSER_SMOKE=1 FEEDER_PRODUCTIVITY_SMOKE=1 FEEDER_SIDEBAR_SMOKE=1 FEEDER_SETTINGS_SMOKE=1 python3 scripts/container-smoke.py
+        run: FEEDER_BROWSER_SMOKE=1 FEEDER_PRODUCTIVITY_SMOKE=1 FEEDER_SIDEBAR_SMOKE=1 FEEDER_SETTINGS_SMOKE=1 FEEDER_ACCESS_SMOKE=1 python3 scripts/container-smoke.py

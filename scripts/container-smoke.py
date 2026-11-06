@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Verify only a newly generated Linux Compose project and its disposable data."""
-import io, json, os, socket, subprocess, tarfile, urllib.request, urllib.error, uuid
+import io, json, os, socket, subprocess, tarfile, urllib.request, urllib.error, uuid, http.cookiejar
 from pathlib import Path
 root=Path(__file__).resolve().parent.parent
 project='feeder-smoke-'+uuid.uuid4().hex[:12]
@@ -13,10 +13,13 @@ restore_compose=['docker','compose','--env-file','/dev/null','-p',project+'-rest
 restore_created=False
 def cmd(*args):
     return subprocess.check_output([*compose,*args],cwd=root,env=env,text=True).strip()
+cookies=http.cookiejar.CookieJar()
+opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+csrf=''
 def request(path,method='GET',data=None,headers=None):
-    r=urllib.request.Request(f'http://127.0.0.1:{port}'+path,method=method,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json',**(headers or {})})
+    r=urllib.request.Request(f'http://127.0.0.1:{port}'+path,method=method,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json','X-Feeder-CSRF':csrf,**(headers or {})})
     try:
-        with urllib.request.urlopen(r,timeout=10) as response:return response.status,response.read()
+        with opener.open(r,timeout=10) as response:return response.status,response.read()
     except urllib.error.HTTPError as e:return e.code,e.read()
 try:
     print('Linux container verification project:',project,flush=True)
@@ -38,6 +41,7 @@ try:
     status,body=request('/api/articles');assert status==200
     articles=json.loads(body);assert articles['total']==36
     article_id=articles['items'][0]['id']
+    csrf=json.loads(request('/api/session')[1])['csrf_token']
     assert request(f'/api/articles/{article_id}/state','POST',{'read':True,'starred':True},headers={'Origin':'https://attacker.invalid'})[0]==403
     assert request(f'/api/articles/{article_id}/state','POST',{'read':True,'starred':True})[0]==200
     assert request('/api/collection/settings','PATCH',{'enabled':False,'interval_seconds':120})[0]==200
@@ -50,6 +54,10 @@ try:
         subprocess.run(['node','scripts/sidebar-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_SETTINGS_SMOKE')=='1':
         subprocess.run(['node','scripts/settings-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    if env.get('FEEDER_ACCESS_SMOKE')=='1':
+        subprocess.run(['node','scripts/access-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    api_keys_snapshot=json.loads(request('/api/keys')[1])
+    api_rate_snapshot=json.loads(request('/api/keys/settings')[1])
     reader_settings_snapshot=json.loads(request('/api/reader/settings')[1])
     library_snapshot=json.loads(request('/api/library')[1])
     history_snapshot=json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])
@@ -64,6 +72,9 @@ try:
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
     assert json.loads(request('/api/library')[1])==library_snapshot
     assert json.loads(request('/api/reader/settings')[1])==reader_settings_snapshot
+    csrf=json.loads(request('/api/session')[1])['csrf_token']
+    assert json.loads(request('/api/keys')[1])==api_keys_snapshot
+    assert json.loads(request('/api/keys/settings')[1])==api_rate_snapshot
     assert json.loads(request('/api/collection/settings')[1])=={'enabled':False,'interval_seconds':120}
     subprocess.run([*restore_compose,'down','--volumes','--remove-orphans','--timeout','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restore_created=False
@@ -73,6 +84,9 @@ try:
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
     assert json.loads(request('/api/library')[1])==library_snapshot
     assert json.loads(request('/api/reader/settings')[1])==reader_settings_snapshot
+    csrf=json.loads(request('/api/session')[1])['csrf_token']
+    assert json.loads(request('/api/keys')[1])==api_keys_snapshot
+    assert json.loads(request('/api/keys/settings')[1])==api_rate_snapshot
     status,body=request('/api/collection/settings');assert status==200 and json.loads(body)=={'enabled':False,'interval_seconds':120}
     cmd('stop','--timeout','30','worker')
     worker_id=cmd('ps','--all','--quiet','worker')

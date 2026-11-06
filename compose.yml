@@ -10,6 +10,7 @@ services:
     environment:
       FEEDER_DB: /data/feeder.sqlite3
       FEEDER_BIND: 0.0.0.0:8080
+      FEEDER_ACCESS_MODE: local
       FEEDER_DEMO: ${FEEDER_DEMO:-0}
       FEEDER_ALLOWED_HOSTS: ${FEEDER_ALLOWED_HOSTS:-localhost:${FEEDER_PORT:-8080},127.0.0.1:${FEEDER_PORT:-8080},127.0.0.1:8080,web:8080}
     ports:
