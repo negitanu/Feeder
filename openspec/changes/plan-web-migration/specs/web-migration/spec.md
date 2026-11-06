@@ -7,12 +7,12 @@ Feeder SHALL provide the existing Web application's agreed capabilities through 
 - **WHEN** a migration phase is planned
 - **THEN** its Web requirements, excluded desktop and synchronization features, and verification state are traceable to the inventory
 
-### Requirement: Preserve Web data and recovery
-Feeder SHALL migrate existing Web data and operational state through a validated process with a consistent recoverable backup, without simultaneous writes from old and new applications.
+### Requirement: Preserve Feeder data and recovery
+Feeder SHALL preserve its own operational data through version upgrades using consistent recoverable backups. Migration of old FeedAstrolabe data is out of scope.
 
-#### Scenario: Cutover is attempted
-- **WHEN** the operator performs a production cutover
-- **THEN** writers are stopped, backup and restore are verified, migrated data is reconciled, and rollback including subsequent writes is defined
+#### Scenario: Feeder is upgraded
+- **WHEN** the operator upgrades Feeder with existing Feeder data
+- **THEN** backup and restore are verified and rollback including subsequent writes is defined
 
 ### Requirement: Preserve security and usability
 Feeder SHALL retain the Web application's applicable authentication, authorization, input protection, renderer isolation, accessibility and responsive interaction requirements.

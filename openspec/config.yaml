@@ -2,9 +2,9 @@ schema: spec-driven
 context: |
   Feeder is a Web-only Rust backend and React/TypeScript frontend successor to FeedAstrolabe.
   Target Linux containers only, with Web and worker managed by Docker Compose. Native macOS/Windows support is out of scope.
-  Preserve existing Web functionality, security, accessibility and data. The local desktop app and cross-device sync are retired.
+  Preserve existing Web functionality, security and accessibility. Migration of old FeedAstrolabe data is out of scope; preserve and recover data already stored in Feeder. The local desktop app and cross-device sync are retired.
   Reference snapshots are historical input, not Feeder's canonical specifications.
-  Plan data migration and rollback using consistent backups before deployment. Never use live data in tests.
+  Plan Feeder upgrades and rollback using consistent backups before deployment. Never use live data in tests.
 rules:
   specs:
     - Every requirement must include testable WHEN/THEN scenarios.

@@ -7,7 +7,7 @@
 ## 2. Vertical slice and migration proof
 
 - [x] 2.1 Implement and test a Rust service and React reader slice with synthetic data.
-- [ ] 2.2 Verify read-only copies and generated schema fixtures; choose DB strategy, implement backups, reconciliation and rollback rehearsal.
+- [ ] 2.2 Verify generated Feeder schema fixtures, backups, restore and rollback rehearsal; legacy data conversion is out of scope.
 - [ ] 2.3 Verify reader navigation, progressive loading, scoped bulk read, themes and accessibility.
 
 ## 3. Feature parity
@@ -20,5 +20,5 @@
 ## 4. Cutover
 
 - [ ] 4.1 Validate all canonical OpenSpec files strictly, dependencies, security, API compatibility and operational guides.
-- [ ] 4.2 Rehearse writer quiescence, DB plus blob backup/restore, migration, data reconciliation and rollback, including writes after cutover.
+- [ ] 4.2 Rehearse Feeder writer quiescence, DB plus blob backup/restore and rollback, including writes after an upgrade.
 - [ ] 4.3 After acceptance, rebuild/restart the intended deployment and verify health, real HTTP and required external access.

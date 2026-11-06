@@ -1,5 +1,7 @@
 # 段階的移行計画
 
+**現行方針（2026-11-06）**: 旧 FeedAstrolabe データの変換・移行・切替照合は対象外。以下の旧データ移行に関する記述は過去の計画として扱い、機能移植の依存条件にしない。Feeder 自身のデータのバックアップと復旧は維持する。
+
 ## 目的と前提
 
 FeedAstrolabe Web の機能と利用者データを Feeder に移す。Rust、React/TypeScript、SQLite を基本候補とし、認証や renderer 隔離を含む既存運用を維持する。デスクトップアプリ、同期、デスクトップデータの移行は終了する。実行中の Web とその実データはそのまま維持する。Web の既存データ移行は必要。
@@ -8,7 +10,7 @@ FeedAstrolabe Web の機能と利用者データを Feeder に移す。Rust、Re
 
 ## 現在の着手順
 
-2026-11-06時点の具体的な残作業と依存関係は [優先順位バックログ](handoff/priority-backlog.md)、実装環境と受入基準は [Cursor引き継ぎ入口](handoff/cursor.md) を参照。次は提案済み `reader-stable-continuation`。以下の段階構成を維持しつつ、直近の作業はP0から進める。
+2026-11-06時点の具体的な残作業と依存関係は [優先順位バックログ](priority-backlog.md)、実装と検証の状況は [実装状況](implementation-status.md) を参照。次は提案済み `reader-stable-continuation`。以下の段階構成を維持しつつ、直近の作業はP0から進める。
 
 ## 0. 基準線と技術検証
 

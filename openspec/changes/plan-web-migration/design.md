@@ -1,5 +1,7 @@
 ## Context
 
+2026-11-06 の方針変更: 以下の旧 FeedAstrolabe データの変換・移行・新旧間切替に関する判断は撤回する。Feeder 自身のデータを保持し、アップグレード時のバックアップ・復旧を検証する。既存 Web 機能の移植は継続する。
+
 移行元は FeedAstrolabe Web の Flask/SQLite、現行ソース schema version 19。実稼働 DB のバージョンや使用状況は未確認。Web の未コミット同期差分は新製品のベースに含めない。ローカルアプリと同期は廃止する。
 
 ## Goals / Non-Goals

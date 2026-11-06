@@ -1,5 +1,7 @@
 ## Why
 
+2026-11-06 の方針変更: 旧 FeedAstrolabe データの移行・変換は対象外。以下の旧データ切替に関する内容は過去の計画とし、Feeder 自身のデータ保全・復旧は維持する。
+
 FeedAstrolabe の Web 機能を維持しつつ、単一の Web 製品 Feeder として Rust と React/TypeScript に移植する。段階的な受入と安全な切替の基準を先に確定する。
 
 ## What Changes
