@@ -1,37 +1,33 @@
-# Feeder 残りの Web 移植タスク
+# RSS / SNS Reader の残タスク
 
-監査時点: 2026-11-07。これは FeedAstrolabe 参照スナップショットと Feeder の現行 OpenSpec・実装・検証記録を突き合わせた、次の作業を選ぶための一覧である。参照資料は移行元の履歴であり Feeder の仕様・検証結果ではない。既存Feederデータの保全と復旧は必須。
+更新: 2026-11-07。FeederはRust + ReactによるWeb専用の高機能な情報収集ツール／RSS・SNSリーダー。移植元の全機能を再現する計画から、収集・閲覧・整理に必要な機能を選ぶ計画へ変更する。
 
-## 現在の範囲と状態
+## 実装済みの基盤
 
-- **実装済み（記録済み）— 読む／RSS収集／配置／一部設定・アクセス制御:** 読書状態・検索・履歴・段階読込、購読発見と確認、OPML、定期収集、フォルダー／フィード順序、表示設定・設定エクスポート、APIキーと公開RSS/記事API。根拠: `openspec/specs/reader-foundation/spec.md`、`subscription-collection/spec.md`、`discovery-worker-opml/spec.md`、`sidebar-organization/spec.md`、`reader-settings-export/spec.md`、`api-access-control/spec.md` と各変更の完了済み `tasks.md`、`docs/implementation-status.md`。
-- **実装済み（今回の監査報告）— 設定の統合:** 「集める」行き先を除去し、設定を統一済み。メイン実装で読書・設定・OPMLプレビュー・APIキーのブラウザー検証とバックアップ復旧を確認。記録: `docs/verification-unified-settings.md`。統合作業の OpenSpec は `openspec/changes/unified-settings/`。
-- **部分実装— 読書継続と残る操作:** 署名付き継続、失敗時再試行、浮動詳細・前後移動は実装済み。一方、`openspec/changes/reader-stable-continuation/tasks.md` の受入・記録 3.1–3.3 は未完了。参照 `article-reader/spec.md` のブラウザ履歴復元、旧URL、JavaScript 無効時の結果到達性も残件候補で、個別 OpenSpec で範囲を定める。
-- **部分実装— 公開 API 契約:** RSS/記事の v1 と認証・権限は実装済み。旧 API 全体との互換性は証明されていない。`docs/priority-backlog.md` P0-03 と `openspec/specs/api-access-control/spec.md` を参照。
-- **未実装— 調査・研究データ領域:** research workspace／メモ版管理／タグ、immutable evidence・引用・添付と blob 保全、entity／relations は Feeder の Rust/React 実装・canonical spec が確認できない。参照 `research-workspaces/spec.md`、`evidence-provenance/spec.md`、`entities-relations/spec.md`。既存の Feeder 記事等の保全要件と混同せず、新規機能として合成 fixture で扱う。
-- **未実装— 運用・通知:** 出典付きレポート、通知配信、再現可能なジョブ制御、定期バックアップと別環境復元は未完了。参照 `reports-operations/spec.md`、`docs/priority-backlog.md` P1-04、`openspec/changes/plan-web-migration/tasks.md` 3.2 / 4.2。
-- **未実装— 外部ソース・分析:** SNS収集、AI provider／grounded assistant／watchlist、network/security intelligence、ページ観測と隔離 renderer は未実装。参照 `feed-collection/spec.md`、`selectable-ai-providers/spec.md`、`grounded-assistant/spec.md`、`watchlists-triage/spec.md`、`network-intelligence/spec.md`、`security-intelligence/spec.md`。Feeder に環境変数の受け口があっても provider 機能の実装とは数えない（`docs/implementation-status.md`）。
+記事の既読・スター・検索・履歴・継続読込、RSS/Atomの発見・プレビュー・購読、定期収集・停止再開・個別間隔、OPML入出力、フォルダー・並べ替え、設定統合、表示設定と設定エクスポート、APIキーとRSS/記事API。機能全体の検証完了を意味せず、詳細は implementation-status.md と各検証記録を参照。
 
-- **部分実装— UI/UX:** 配色・カード・ブランド・設定統合は実装済み。モバイルのフィード開閉、設定カテゴリの分割、URL・履歴連携、詳細の開閉アニメーションが残る。根拠: `docs/verification-reader-visual-parity.md`。
+## 優先順位付きの残作業
 
-## 次の順序
+1. **P0 読書の信頼性:** 継続読込の残る受入、挿入・削除・期限切れ時の復帰、二重既読更新と追加読込失敗を確認。既存の reader-stable-continuation の未完了タスクを閉じる。
+2. **P0 運用と保全:** Feeder自身の記事・購読・既読・スター・順序・設定の整合バックアップと復元、更新失敗時の復旧、依存監査、Access認証の実環境受入を記録。画面到達確認と認証境界の検証は区別する。
+3. **P1 毎日の読書UI:** URLと戻る／進むによる一覧・詳細・検索の復元、モバイルのフィード一覧開閉、設定カテゴリの整理、長い名前・大量購読・全テーマの使い勝手、詳細開閉と動きの低減、JavaScript無効時の代替経路を仕様化する。
+4. **P1 SNS Reader:** 公開Mastodon・Bluesky投稿を収集し、RSS記事と同じ既読・スター・検索・フォルダーで扱う。提供元別の取得上限・待機・重複防止・失敗時保持を模擬APIで検証。研究ワークスペースなどの依存は設けない。Xの新規収集は対象外。
+5. **P1 購読管理と収集状況:** 一括停止／再開、最終成功時刻・次回取得・エラーと再試行、OPML大量取り込み・重複・フォルダー構造の受入、購読一覧検索を整える。
+6. **P2 APIと設定の持ち運び:** Reader用途のRSS・記事・SNS APIについて互換範囲と意図的差分を確定する。設定JSONの安全なプレビュー付き読み込みを検討し、秘密は取り込まない。旧版の研究APIは互換対象にしない。
 
-1. **P0 — 継続読込の残る受入を閉じる:** `openspec/changes/reader-stable-continuation/tasks.md` 3.1–3.3。改ざん・期限・条件不一致・挿入削除・2ページ目失敗と再試行・observerなし・モバイル/テーマ・復元を合成データで確認し、未確認項目を記録する。既存変更の受入を完了する作業。
-2. **P0 — 公開 API の互換性契約:** `docs/priority-backlog.md` P0-03 に従い、旧 API 仕様と `backend/src/public_api.rs` の RSS/記事について互換・意図的差分・未対応を確定。fixture による契約を OpenSpec で先に定める。SNS/研究 API は各機能の変更に含める。
-3. **P1 — Research workspace 最小垂直スライス:** 案件、版管理メモ、タグ、記事との関連、認可・競合処理を対象とする OpenSpec を作成し、React画面・Rust API/SQLite・合成 fixture を一緒に実装する。受入後に evidence を追加する。
-4. **P1 — Evidence と添付:** P1-3 完了後、immutable capture/quotation、添付の認証・上限・隔離処理、DBと blob の一貫バックアップ／別環境復元を OpenSpec 化して実装する。
-5. **P1 — 復旧運用とレポート／通知:** ジョブの再試行・中断・重複防止、出典付きレポート、模擬通知、Feeder データの別 volume 復元を分割して進める。
-6. **P2 — 外部連携を個別変更で追加:** 依存する workspace/evidence/復旧基盤後に、SNS、AI/assistant/watchlist、intelligence、隔離 observer を別々の OpenSpec・模擬接続・上限付きで着手する。
+## 改善アイデア（未実装・着手前に個別OpenSpecを作成）
 
-## 対象外と全体ゲート
+- **優先度高: 保存した検索／スマートフォルダー。** キーワード・情報源・未読などの条件を保存し、繰り返し同じ検索を入力せずに読める。
+- **優先度高: 記事の重複をまとめる。** 正規化URLなどを用い、複数RSSやSNSに現れた同じリンクをまとめて表示する。元記事と購読別状態を失わず、解除可能にする。
+- **優先度高: あとで読む。** スターとは別の読書待ち行列を作り、読了で取り除く運用を選べるようにする。
+- **優先度中: キーワードのミュートと表示ルール。** 情報源単位・全体で適用でき、除外理由の表示と一時解除を可能にする。収集データを黙って削除しない。
+- **優先度中: 新着のまとめと静かな通知。** お気に入り情報源だけの新着件数や日次まとめを、明示的に有効化した場合に提供する。頻度上限・静音時間・模擬送信から始める。
+- **優先度中: 読みやすさの設定。** 文字サイズ・行間・本文幅、未読だけの連続閲覧、操作キーの一覧を追加する。
+- **優先度中: 収集の健康状態。** 失敗購読、長期間更新のない購読、リダイレクト候補を一覧にし、安全な修正と一括操作を可能にする。
+- **優先度低: 共有と持ち出し。** 選択記事のリンク一覧や標準形式での書き出しを用意する。調査レポート機能には拡張しない。
 
-- FeedAstrolabe の記事・既読・スター・設定・研究・根拠・添付の移行／変換は対象外。Feeder に保存されたデータのバックアップ・復元・更新失敗時の保全は対象（合成 fixture を使う）。
-- 旧デスクトップアプリ、Web/local 同期、旧同期コード、X の新規収集は対象外。運用仕様のローカル volume は Web サーバーの永続化であり、desktop/local 同期ではない。
-- 公開・切替前には `docs/priority-backlog.md` の G1 外部 Access、G2 Feeder DB と添付の復旧、G3 全体受入を完了する。未実施の外部接続・依存監査・CI は成功扱いしない。
+## 対象外
 
-## 根拠の案内
+調査・研究ワークスペース、案件管理、メモ版管理、根拠・引用・添付保全の新機能、entity/relations、出典付き調査レポート、grounded assistant、研究向けwatchlist、network/security/AI研究intelligence、ページ観測と専用rendererを実装計画から除外する。一般のタグや保存検索を追加する場合はReaderの整理機能として別に設計する。
 
-- Feeder 実装の進捗と検証リンク: `docs/implementation-status.md`。
-- 優先順位・受入条件: `docs/priority-backlog.md`。
-- 網羅的な移行計画と全体ゲート: `openspec/changes/plan-web-migration/tasks.md`。
-- 旧仕様スナップショットの由来・注意: `reference/feedastrolabe/README.md`。
+旧FeedAstrolabeデータの移行、旧デスクトップ、Web/local同期、Xの新規収集は引き続き対象外。既存Feederデータの保全要件は維持する。参照スナップショットは過去資料として残し、未移植機能の実装義務とは扱わない。

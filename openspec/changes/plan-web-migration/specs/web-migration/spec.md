@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Web-only successor
-Feeder SHALL provide the existing Web application's agreed capabilities through a Rust backend and React frontend, while excluding the retired desktop application and cross-device synchronization.
+Feeder SHALL provide the agreed RSS/SNS collection, reading and organization capabilities through a Rust backend and React frontend, while excluding research/investigation functionality, the retired desktop application and cross-device synchronization.
 
 #### Scenario: Migration scope is reviewed
 - **WHEN** a migration phase is planned
-- **THEN** its Web requirements, excluded desktop and synchronization features, and verification state are traceable to the inventory
+- **THEN** its Web requirements, excluded research, desktop and synchronization features, and verification state are traceable to the inventory
 
 ### Requirement: Preserve Feeder data and recovery
 Feeder SHALL preserve its own operational data through version upgrades using consistent recoverable backups. Migration of old FeedAstrolabe data is out of scope.
@@ -15,7 +15,7 @@ Feeder SHALL preserve its own operational data through version upgrades using co
 - **THEN** backup and restore are verified and rollback including subsequent writes is defined
 
 ### Requirement: Preserve security and usability
-Feeder SHALL retain the Web application's applicable authentication, authorization, input protection, renderer isolation, accessibility and responsive interaction requirements.
+Feeder SHALL retain the Web application's applicable authentication, authorization, input protection, any applicable renderer isolation, accessibility and responsive interaction requirements.
 
 #### Scenario: A feature is declared complete
 - **WHEN** its migration is reviewed

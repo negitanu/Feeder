@@ -2,11 +2,13 @@
 
 現行方針: 旧 FeedAstrolabe データの変換・移行は対象外。以下の旧データ移行に関する説明は過去の記録であり、機能の移植状況とは区別する。
 
+2026-11-07方針: RSS/SNS Readerに集中し、調査・研究・根拠・研究向けAI/分析は実装計画から除外する。以下の対象外項目は移行元の参照索引として保持する。
+
 現在の着手順と未完了の依存関係は [優先順位バックログ](priority-backlog.md) を参照。末尾の段階別受入は履歴であり、後続の実装状況を優先する。
 
 参照基準は FeedAstrolabe commit `b9592aa641f254a29a626937a6c02d7fcae54a6c` の Web 本仕様。移行状況は各見出しと末尾の受入状況に記録する。段階は暫定で、実装時にシナリオ単位へ分解する。参照スナップショットは [reference](../reference/feedastrolabe/README.md) に置く。
 
-## ai-research-tracking（段階 4、未着手）
+## ai-research-tracking（対象外）
 
 移行元: [ai-research-tracking](../reference/feedastrolabe/specs/ai-research-tracking/spec.md)。要件: Versioned research tracking、Attributed model cards、Qualified evaluations。
 
@@ -22,11 +24,11 @@
 
 移行元: [contextual-source-management](../reference/feedastrolabe/specs/contextual-source-management/spec.md)。要件: Source management belongs to the library。
 
-## entities-relations（段階 4、未着手）
+## entities-relations（対象外：調査・研究機能）
 
 移行元: [entities-relations](../reference/feedastrolabe/specs/entities-relations/spec.md)。要件: Normalized mentions、Evidence-backed relations、Reversible exploration。
 
-## evidence-provenance（段階 3、未着手）
+## evidence-provenance（対象外：調査・研究機能）
 
 移行元: [evidence-provenance](../reference/feedastrolabe/specs/evidence-provenance/spec.md)。要件: Immutable evidence、Independent retention、Safe attachment lifecycle。
 
@@ -36,7 +38,7 @@
 
 RSS購読URLの修正と収集中の競合防止は [subscription-url-edit](../openspec/specs/subscription-url-edit/spec.md) に移植。個別収集間隔は [feed-poll-interval](../openspec/changes/feed-poll-interval/proposal.md) で実装・検証する。
 
-## grounded-assistant（段階 4、未着手）
+## grounded-assistant（対象外：調査・研究機能）
 
 移行元: [grounded-assistant](../reference/feedastrolabe/specs/grounded-assistant/spec.md)。要件: Grounded assistance、Controlled external processing、Safe reproducible jobs。
 
@@ -46,7 +48,7 @@ RSS購読URLの修正と収集中の競合防止は [subscription-url-edit](../o
 
 local は既存 Web サーバーの localhost 運用を指し、廃止対象の Electron アプリではない。
 
-## network-intelligence（段階 4、未着手）
+## network-intelligence（対象外：調査・研究機能）
 
 移行元: [network-intelligence](../reference/feedastrolabe/specs/network-intelligence/spec.md)。要件: Temporal network observations、Uncertainty-aware interpretation、Passive bounded monitoring。
 
@@ -64,11 +66,11 @@ local は既存 Web サーバーの localhost 運用を指し、廃止対象の 
 
 移行元: [reader-productivity](../reference/feedastrolabe/specs/reader-productivity/spec.md)。要件: Independent recent reading history、Shared deterministic ordering、Detailed literal search form、Explicit selected-article bulk state。
 
-## reports-operations（段階 3、未着手）
+## reports-operations（対象外：調査・研究機能）
 
 移行元: [reports-operations](../reference/feedastrolabe/specs/reports-operations/spec.md)。要件: Portable sourced outputs、Controlled notification delivery、Recoverable operations、Bounded management APIs。
 
-## research-workspaces（段階 3、未着手）
+## research-workspaces（対象外：調査・研究機能）
 
 移行元: [research-workspaces](../reference/feedastrolabe/specs/research-workspaces/spec.md)。要件: Research organization、Versioned notes、Scoped workspace access、Shared tags and bounded filtering。
 
@@ -78,11 +80,11 @@ local は既存 Web サーバーの localhost 運用を指し、廃止対象の 
 
 Python のバージョン要件は Rust へ読み替え、renderer の実装言語は別途決定する。非 root 等の保護とデータ保全は維持する。
 
-## security-intelligence（段階 4、未着手）
+## security-intelligence（対象外：調査・研究機能）
 
 移行元: [security-intelligence](../reference/feedastrolabe/specs/security-intelligence/spec.md)。要件: Attributed vulnerability cards、Qualified applicability、Bounded connectors。
 
-## selectable-ai-providers（段階 4、未着手）
+## selectable-ai-providers（対象外：調査・研究機能）
 
 移行元: [selectable-ai-providers](../reference/feedastrolabe/specs/selectable-ai-providers/spec.md)。要件: One provider selection interface、Provider-specific request and result contracts、Preserve budgets and provider lineage、Compatible OpenRouter migration。
 
@@ -92,7 +94,7 @@ Python のバージョン要件は Rust へ読み替え、renderer の実装言�
 
 Feeder `sidebar-organization` で DB による順序・所属保存、直接ドラッグ、キーボード、操作メニューからの移動、幅変更を移植。旧空名フォルダーのデータ変換は本移行の検証まで未完了。フォルダーなし(NULL)と文字列「未分類」のフォルダーは区別する。検証は[配置の検証](verification-sidebar-organization.md)を参照。
 
-## watchlists-triage（段階 4、未着手）
+## watchlists-triage（対象外：調査・研究機能）
 
 移行元: [watchlists-triage](../reference/feedastrolabe/specs/watchlists-triage/spec.md)。要件: Repeatable triage、Idempotent matching、Provenance-preserving groups。
 
