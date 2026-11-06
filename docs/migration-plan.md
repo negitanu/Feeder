@@ -6,6 +6,10 @@ FeedAstrolabe Web の機能と利用者データを Feeder に移す。Rust、Re
 
 設計上の段階であり、いずれも完了を表さない。個々の着手前に OpenSpec で対象・受入条件・設計を具体化し、必要な本仕様を作る。旧仕様のスナップショットは参考資料であり、自動的に全て Feeder の仕様にならない。
 
+## 現在の着手順
+
+2026-11-06時点の具体的な残作業と依存関係は [優先順位バックログ](handoff/priority-backlog.md)、実装環境と受入基準は [Cursor引き継ぎ入口](handoff/cursor.md) を参照。次は提案済み `reader-stable-continuation`。以下の段階構成を維持しつつ、直近の作業はP0から進める。
+
 ## 0. 基準線と技術検証
 
 - 現行 Web の README、本仕様、コード、API、既存テストと運用文書を照合し、[機能対応表](source-inventory.md)をシナリオ単位に詳細化。未コミット同期差分と既存実装を区別する。

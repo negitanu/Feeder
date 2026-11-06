@@ -1,5 +1,7 @@
 # 移行元の仕様と機能の対応表
 
+現在の着手順と未完了の依存関係は [優先順位バックログ](handoff/priority-backlog.md) を参照。末尾の段階別受入は履歴であり、後続の実装状況を優先する。
+
 参照基準は FeedAstrolabe commit `b9592aa641f254a29a626937a6c02d7fcae54a6c` の Web 本仕様。移行状況は各見出しと末尾の受入状況に記録する。段階は暫定で、実装時にシナリオ単位へ分解する。参照スナップショットは [reference](../reference/feedastrolabe/README.md) に置く。
 
 ## ai-research-tracking（段階 4、未着手）
@@ -112,7 +114,7 @@ Feeder `sidebar-organization` で DB による順序・所属保存、直接ド�
 
 ## 表示設定・エクスポートの対応状況
 
-`reader-settings-export` で旧 `preferences.py` の初期表示・UTC/JST と `configuration_export.py` のバージョン付き・allowlist・秘密除外・読取専用の書き出しを移植。ブラウザの標準/1行/タイル、テーマ、幅、フォルダー開閉を現在のメモリー上の値から書き出す。旧のAI/connector/notification等の設定、API上限、設定全体の読み込み・旧DB完全変換は未完了。日付検索も共有タイムゾーンへ更新。詳細は[表示設定・持ち出し](reader-settings-export.md)を参照。
+`reader-settings-export` で旧 `preferences.py` の初期表示・UTC/JST と `configuration_export.py` のバージョン付き・allowlist・秘密除外・読取専用の書き出しを移植。ブラウザの標準/1行/タイル、テーマ、幅、フォルダー開閉を現在のメモリー上の値から書き出す。旧のAI/connector/notification等の設定、設定全体の読み込み・旧DB完全変換は未完了。API回数上限は後続のapi-access-controlで実装済み。日付検索も共有タイムゾーンへ更新。詳細は[表示設定・持ち出し](reader-settings-export.md)を参照。
 
 ## API・アクセス制御の対応
 

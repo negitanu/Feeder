@@ -64,3 +64,7 @@ OPMLファイルは1 MiBまで、1000 outline・16階層までです。ファイ
 [表示設定・設定エクスポート](docs/reader-settings-export.md)では、初期表示、UTC／日本時間、標準・1行・タイル表示と、安全な設定の持ち出しを扱います。
 
 [アクセス制御とAPIキー](docs/api-access-control.md)に、キーの発行・失効、公開APIのRSS／記事サブセットと、外部公開用の保護されたTunnel構成を記載しています。通常のComposeは引き続きローカル専用です。
+
+## 開発の引き継ぎ
+
+[Cursor引き継ぎ入口](docs/handoff/cursor.md)に現在の基準線・優先順位・最初のOpenSpec変更・再現手順をまとめています。

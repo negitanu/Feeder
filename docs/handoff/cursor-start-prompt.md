@@ -1,0 +1,19 @@
+# Cursorへの開始指示
+
+以下をCursorのAgentへ貼り付けてください。参照先はリポジトリ内の相対パスです。
+
+---
+
+Feederの移植を引き継いでください。最初にAGENTS.md、docs/handoff/cursor.md、docs/handoff/priority-backlog.mdを読み、Gitの現在ブランチ・作業ツリー・origin/devを確認してください。既存の未コミット変更を消さず、devで目的別にcommitしてください。mainの変更、merge/release、本番切替は今回の範囲ではありません。
+
+FeederはWeb専用のRust + React/TypeScriptアプリで、実行環境はLinuxコンテナです。廃止したdesktop/localアプリとWeb/local同期を復活させないでください。旧FeedAstrolabeのコードは参照用で、実DBや稼働サービスを変更しません。現在のFeeder schemaはv7です。Feeder内のバージョン移行と旧Web DBのコンバートを混同しないでください。
+
+アプリ基準f942dadではLinux内39テスト、5種類のブラウザ検証、復元/再作成、OpenSpec17項目が通過しています。GitHub CI成功と実Cloudflare認証は未確認です。まず最新devのCIを確認し、取得できない場合はローカルLinux受入を行い、未確認のまま記録してください。CIを読めないだけで作業を無期限停止せず、成功したと捏造しないでください。
+
+最初の実装は準備済みのOpenSpec変更 reader-stable-continuation です。openspec statusとinstructions applyを取得し、proposal/design/specs/tasksを読んで9件のタスクを進めてください。まず初回cursor-modeとエラー契約を具体化して文書へ反映し、offsetの読み飛ばしを再現する合成fixtureから着手します。
+
+必要な結果は、条件/順序/共有timezone/関連source所属に束縛した署名付き継続、挿入/削除でoffsetがずれても未読込の対象記事を取り逃さない取得、読込済み一覧/選択/位置を保つ追加取得の明示再試行、IntersectionObserverなしのキーボード経路、timezoneが変わった古いタブの一括変更拒否です。変更要求を自動再送しないでください。並びキーが変わる更新まで完全snapshot保証したとは書かず、設計のlive-view契約を維持します。
+
+既存の内部offset呼び出しと公開/api/v1のID継続・Bearer認証は維持します。ブラウザのapiFetch、CSRF、キー全文の一度だけ表示、秘密を除く設定書き出し、非root/read-only等を回帰させないでください。実データ・秘密・外部送信をテストへ使いません。
+
+Linuxテストと対象ブラウザ検証、既存回帰、OpenSpec strict、差分/秘密検査を通し、検証記録・本仕様・tasksを更新して目的別commitを作ってください。今回の完了条件はreader-stable-continuationの受入で、研究/外部連携やUI全面刷新を同じ変更へ混ぜません。その後は優先順位バックログのP0-03以降へ進んでください。報告には実装した範囲・検証・未実施事項・Gitの状態を記載してください。

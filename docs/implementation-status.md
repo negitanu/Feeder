@@ -1,6 +1,6 @@
 # 実装と移植の進捗
 
-2026-11-06。`reader-foundation` の実装・検証が完了。全体移行は継続中。
+2026-11-06。アプリ基準 `f942dad`、Feeder schema v7。読書・収集・配置・設定・APIアクセスの8変更を、その変更範囲で実装・検証済み。全体移行は継続中。現在の着手順とCursorへの入口は [引き継ぎ資料](handoff/cursor.md) を参照。以下の各節は段階ごとの履歴であり、古い節の未完了項目は後続節で更新される。
 
 ## 今回の実装対象
 
@@ -59,3 +59,7 @@ Linuxコンテナを正式な実行環境として `linux-container-runtime` を
 `api-access-control` でブラウザセッション/CSRF、APIキーの発行・失効・期限・権限・回数上限と、RSS/記事の公開v1 APIを実装。DB v7 はv6バックアップを保持する。外部公開用Composeはoriginのhost portを消し、Access/Protect with Accessを必須とする運用設計。
 
 結果: [アクセス制御の検証](verification-api-access-control.md)。実ドメインの公開受入、アプリ内JWT検証、旧DB/API全体の互換性は未完了。次は残る読書継続仕様と、研究・根拠・外部連携の移植。
+
+## Cursorへの引き継ぎ準備
+
+[優先順位バックログ](handoff/priority-backlog.md) と [開始指示](handoff/cursor-start-prompt.md) を追加。最初の実装対象 `reader-stable-continuation` は提案・設計・仕様・9タスクまで準備済みで、実装は未着手。この引き継ぎ準備ではアプリコード・DB・コンテナ・本番環境を変更していない。
