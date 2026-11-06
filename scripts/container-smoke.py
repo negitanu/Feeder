@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Verify only a newly generated Linux Compose project and its disposable data."""
-import io, json, os, socket, subprocess, tarfile, urllib.request, urllib.error, uuid, http.cookiejar
+import io, json, os, re, socket, subprocess, tarfile, tempfile, urllib.request, urllib.error, uuid, http.cookiejar
 from pathlib import Path
 root=Path(__file__).resolve().parent.parent
 project='feeder-smoke-'+uuid.uuid4().hex[:12]
 with socket.socket() as sock:
     sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
-env=dict(os.environ,FEEDER_PORT=str(port),FEEDER_DEMO='1',FEEDER_ALLOWED_HOSTS=f'localhost:{port},127.0.0.1:{port},127.0.0.1:8080,web:8080')
+env=dict(os.environ,FEEDER_PORT=str(port),FEEDER_DEMO='1',FEEDER_ALLOWED_HOSTS=f'localhost:{port},127.0.0.1:{port},127.0.0.1:8080,web:8080',OPENROUTER_API_KEY='FEEDER_SYNTHETIC_OPENROUTER_CANARY',ORCAROUTER_API_KEY='FEEDER_SYNTHETIC_ORCAROUTER_CANARY')
 # No real .env/credentials are loaded into this generated test deployment.
 compose=['docker','compose','--env-file','/dev/null','-p',project]
 restore_compose=['docker','compose','--env-file','/dev/null','-p',project+'-restore']
@@ -42,12 +42,33 @@ try:
     articles=json.loads(body);assert articles['total']==36
     article_id=articles['items'][0]['id']
     csrf=json.loads(request('/api/session')[1])['csrf_token']
+    # Synthetic credentials are provisioned only to app services, never exposed
+    # through the UI, settings export, public API authorization, or logs.
+    canaries=[env['OPENROUTER_API_KEY'],env['ORCAROUTER_API_KEY']]
+    for c in containers:
+        info=json.loads(subprocess.check_output(['docker','inspect',c['ID']],text=True))[0]
+        container_env=info['Config']['Env']
+        assert all(any(value.endswith('='+canary) for value in container_env) for canary in canaries)
+    assert request('/api/v1/articles',headers={'Authorization':'Bearer '+canaries[0]})[0]==401
+    export_status,export_body=request('/api/configuration/export','POST',{'presentation':{'appearance':'light','width':250,'layout':'standard','collapsed_folders':[]}})
+    assert export_status==200
+    ui=request('/')[1]
+    script_path=re.search(rb'src="([^"]+\.js)"',ui).group(1).decode()
+    js=request(script_path)[1]
+    logs=cmd('logs','--no-color','web','worker')
+    assert all(value.encode() not in export_body and value.encode() not in ui and value.encode() not in js and value not in logs for value in canaries)
+    cmd('exec','-T','web','sh','-c','! grep -a -q -F "$OPENROUTER_API_KEY" /data/feeder.sqlite3* && ! grep -a -q -F "$ORCAROUTER_API_KEY" /data/feeder.sqlite3*')
+    with tempfile.NamedTemporaryFile(mode='w',suffix='.env') as dotenv:
+        dotenv.write("OPENROUTER_API_KEY='SYNTHETIC_$DOLLAR_VALUE'\n");dotenv.flush()
+        isolated_env={k:v for k,v in env.items() if k!='OPENROUTER_API_KEY'}
+        subprocess.run(['docker','compose','--env-file',dotenv.name,'-p',project,'run','--rm','--no-deps','-T','--entrypoint','sh','web','-c',"test \"$OPENROUTER_API_KEY\" = 'SYNTHETIC_$DOLLAR_VALUE'"],cwd=root,env=isolated_env,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     assert request(f'/api/articles/{article_id}/state','POST',{'read':True,'starred':True},headers={'Origin':'https://attacker.invalid'})[0]==403
     assert request(f'/api/articles/{article_id}/state','POST',{'read':True,'starred':True})[0]==200
     assert request('/api/collection/settings','PATCH',{'enabled':False,'interval_seconds':120})[0]==200
     assert cmd('exec','-T','web','sh','-c','test "$(id -u)" = 10001; test ! -w /app; test -w /data')==''
     if env.get('FEEDER_BROWSER_SMOKE')=='1':
         subprocess.run(['node','scripts/browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+        subprocess.run(['node','scripts/detail-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_PRODUCTIVITY_SMOKE')=='1':
         subprocess.run(['node','scripts/productivity-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_SIDEBAR_SMOKE')=='1':

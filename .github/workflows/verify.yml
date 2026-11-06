@@ -49,6 +49,7 @@ jobs:
             sleep 1
           done
           node scripts/browser-smoke.mjs
+          node scripts/detail-browser-smoke.mjs
           python3 tests/seed_collection_fixture.py "$RUNNER_TEMP/feeder-smoke.sqlite3"
           node scripts/collection-browser-smoke.mjs
           node scripts/onboarding-browser-smoke.mjs
@@ -73,6 +74,8 @@ jobs:
           FEEDER_TUNNEL_IMAGE: cloudflare/cloudflared:2026.10.7
           FEEDER_TUNNEL_TOKEN_FILE: /tmp/unused-test-token-reference
         run: python3 scripts/check-tunnel-config.py
+      - name: Validate dotenv and token modes with synthetic credentials
+        run: python3 -m unittest scripts/test_env_configuration.py
       - name: Build Linux runtime
         run: docker compose --env-file /dev/null build
       - uses: actions/setup-node@v4

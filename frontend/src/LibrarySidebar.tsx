@@ -2,7 +2,7 @@ import { apiFetch } from './apiFetch'
 import { useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 export type Folder = { id: number; name: string }
-export type Feed = { id: number; title: string; url: string; folder_id: number | null; paused: boolean; last_error?: string | null; last_checked?: string | null }
+export type Feed = { id: number; title: string; url: string; folder_id: number | null; paused: boolean; poll_interval: number | null; last_error?: string | null; last_checked?: string | null }
 type Item = { kind: 'folder' | 'feed'; id: number }
 type Snapshot = { folders: number[]; feeds: { id: number; folder_id: number | null }[] }
 type Target = Item & { after: boolean }

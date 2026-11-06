@@ -6,27 +6,41 @@ const { chromium } = require('@playwright/test');
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await page.addInitScript(() => { window.__originalOpens = []; window.open = (...args) => { window.__originalOpens.push(args); return null } });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   const origin=process.env.FEEDER_URL || 'http://127.0.0.1:8080';
   await browserSession(page,origin);
   await page.goto(origin);
   await page.locator('.article-card').first().waitFor();
+  const snapshot=async path=>await(await page.request.get(origin+path)).json();
+  const beforeMiddle=await snapshot('/api/articles?limit=100'), historyBeforeMiddle=await snapshot('/api/articles?history=true&limit=100');
+  await page.locator('.article-open').first().click({button:'middle'});
+  assert.equal(await page.evaluate(()=>window.__originalOpens.length),1);
+  assert.deepEqual((await page.evaluate(()=>window.__originalOpens[0])).slice(1),['_blank','noopener,noreferrer']);
+  assert.deepEqual(await snapshot('/api/articles?limit=100'),beforeMiddle);assert.deepEqual(await snapshot('/api/articles?history=true&limit=100'),historyBeforeMiddle);
+  assert.equal(await page.locator('.article-detail').count(),0);
   if (process.env.FEEDER_SCREENSHOT) await page.screenshot({ path: process.env.FEEDER_SCREENSHOT, fullPage: false });
   const firstTitle = await page.locator('.article-card strong').first().innerText();
   await page.locator('.article-open').first().click();
   await page.getByRole('heading', { name: firstTitle, exact: true }).waitFor();
-  if (await page.getByRole('button', { name: 'スターを解除', exact: true }).first().isVisible()) {
-    await page.getByRole('button', { name: 'スターを解除', exact: true }).first().click();
+  const originalTitle=page.getByRole('heading',{name:firstTitle,exact:true}).getByRole('link');assert.equal(await originalTitle.getAttribute('target'),'_blank');assert.equal(await originalTitle.getAttribute('rel'),'noopener noreferrer');
+  await page.context().route('https://example.com/**',route=>route.fulfill({status:200,body:'synthetic original'}));
+  const popup=page.waitForEvent('popup');await originalTitle.focus();await originalTitle.press('Enter');const original=await popup;await original.close();
+  const detail=page.locator('.article-detail');
+  if (await detail.getByRole('button', { name: 'スターを解除', exact: true }).isVisible()) {
+    await detail.getByRole('button', { name: 'スターを解除', exact: true }).click();
   }
-  await page.getByRole('button', { name: 'スターを付ける', exact: true }).first().click();
-  await page.getByRole('button', { name: 'スターを解除', exact: true }).first().waitFor();
-  await page.getByRole('button', { name: '未読にする', exact: true }).click();
-  await page.getByRole('button', { name: '既読にする', exact: true }).click();
+  await detail.getByRole('button', { name: 'スターを付ける', exact: true }).click();
+  await detail.getByRole('button', { name: 'スターを解除', exact: true }).waitFor();
+  await detail.getByRole('button', { name: '未読にする', exact: true }).click();
+  await detail.getByRole('button', { name: '既読にする', exact: true }).click();
   await page.getByRole('button', { name: /一覧に戻る/ }).click();
   await page.locator('.article-card.read').first().waitFor();
   await page.locator('.load-sentinel').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelectorAll('.article-card').length === 36);
+  const beforeAppended=await snapshot('/api/articles?limit=100'),historyBeforeAppended=await snapshot('/api/articles?history=true&limit=100');
+  await page.locator('.article-open').last().click({button:'middle'});assert.equal(await page.evaluate(()=>window.__originalOpens.length),2);assert.deepEqual(await snapshot('/api/articles?limit=100'),beforeAppended);assert.deepEqual(await snapshot('/api/articles?history=true&limit=100'),historyBeforeAppended);
   await page.getByRole('combobox', { name: 'テーマ' }).selectOption('dark');
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
   await page.reload();
@@ -36,6 +50,10 @@ try {
   await page.getByRole('textbox', { name: '記事を検索' }).press('Enter');
   await page.getByText('記事がありません', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const unsafePage=await browser.newPage({viewport:{width:390,height:844}});await unsafePage.addInitScript(()=>{window.__originalOpens=[];window.open=(...args)=>{window.__originalOpens.push(args);return null}});
+  await unsafePage.route('**/api/articles?*',async route=>{const response=await route.fetch();const data=await response.json();if(new URL(route.request().url()).searchParams.has('pagination')&&data.items.length)data.items[0].url='javascript:alert(1)';await route.fulfill({response,json:data})});
+  await unsafePage.route('**/api/articles/*/visit',async route=>{const response=await route.fetch();const data=await response.json();data.url='javascript:alert(1)';await route.fulfill({response,json:data})});
+  await unsafePage.goto(origin);await unsafePage.locator('.article-open').first().waitFor();await unsafePage.locator('.article-open').first().click({button:'middle'});assert.equal(await unsafePage.evaluate(()=>window.__originalOpens.length),0);await unsafePage.locator('.article-open').first().click();await unsafePage.locator('.article-detail h1').waitFor();assert.equal(await unsafePage.locator('.article-detail h1 a').count(),0);await unsafePage.close();
   assert.deepEqual(errors, []);
   console.log('Browser smoke passed: detail/read/star, progressive loading, theme persistence, narrow search, no overflow/errors.');
 } finally { await browser.close(); }

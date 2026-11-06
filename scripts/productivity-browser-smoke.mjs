@@ -54,6 +54,14 @@ try{
  assert.equal(await page.getByRole('button',{name:'全て既読',exact:true}).isDisabled(),true);
  await page.getByRole('button',{name:'詳細条件をクリア',exact:true}).click();await page.waitForFunction(expected=>document.querySelector('.article-card strong')?.textContent===expected,title);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ // Global unread clears prior search/advanced scope and counts the entire library.
+ assert.equal((await page.request.post(origin+'/api/articles/bulk-state',{data:{ids,read:false,filters:{}}})).status(),200);
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ const unreadEntry=page.locator('.filters button').filter({hasText:'未読'});await unreadEntry.locator('.count').filter({hasText:'36'}).waitFor();
+ await page.getByRole('textbox',{name:'記事を検索'}).fill('該当しない検索語');await page.getByRole('textbox',{name:'記事を検索'}).press('Enter');await page.waitForFunction(()=>document.querySelector('.result-count')?.textContent?.includes('0 件'));
+ await unreadEntry.click();await page.waitForFunction(()=>document.querySelector('.result-count')?.textContent?.includes('36 件'));assert.equal(await page.getByRole('textbox',{name:'記事を検索'}).inputValue(),'');assert.equal(await unreadEntry.getAttribute('aria-current'),'page');
+ await page.locator('.article-open').first().click();await unreadEntry.locator('.count').filter({hasText:'35'}).waitFor();await page.getByRole('button',{name:/一覧に戻る/}).click();
+ await page.getByRole('textbox',{name:'記事を検索'}).fill('サンプル記事 1');await page.getByRole('textbox',{name:'記事を検索'}).press('Enter');await page.waitForFunction(()=>document.querySelector('.list-heading p')?.textContent?.includes('サンプル記事 1'));assert.equal(await unreadEntry.getAttribute('aria-current'),null);assert.equal(await unreadEntry.locator('.count').textContent(),'35');
  assert.deepEqual(errors,[]);
  console.log('Productivity browser passed: unloaded scoped all-read, unchanged history, detailed exclusions, selected stars, history persistence and mobile.');
 }finally{await browser.close();}
