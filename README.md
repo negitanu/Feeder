@@ -37,7 +37,7 @@ python3 scripts/container-smoke.py
 
 「集める」で公開サイトまたは RSS/Atom のURLを入力し、候補を選んで内容をプレビューします。「このフィードを登録」で確定するまで購読は追加されません。プレビュー確認は同じセッション内で15分間有効で、再起動・期限切れ・失敗後は再プレビューしてください。左ペインのフォルダー名で記事を表示し、矢印で開閉します。フィードの右クリック／「⋯」から編集、移動、停止／再開、手動更新、削除ができます。停止は記事を残し、削除はその購読の記事を削除します。自動収集は下記の設定と独立workerを使用します。
 
-既知のFeeder v1/v2/v3/v4 DBは更新前に同じ場所の `*.v1-backup.sqlite3` / `*.v2-backup.sqlite3` / `*.v3-backup.sqlite3` / `*.v4-backup.sqlite3` へバックアップを作成します。同名バックアップがある場合は上書きせず起動を拒否します。旧FeedAstrolabe DBは直接利用せず、[読取専用検査](docs/legacy-db-inspection.md)で移行準備を進めます。
+既知のFeeder v1/v2/v3/v4/v5 DBは更新前に同じ場所の `*.v1-backup.sqlite3` / `*.v2-backup.sqlite3` / `*.v3-backup.sqlite3` / `*.v4-backup.sqlite3` / `*.v5-backup.sqlite3` へバックアップを作成します。同名バックアップがある場合は上書きせず起動を拒否します。旧FeedAstrolabe DBは直接利用せず、[読取専用検査](docs/legacy-db-inspection.md)で移行準備を進めます。
 
 ## 自動収集と OPML
 
@@ -60,3 +60,5 @@ OPMLファイルは1 MiBまで、1000 outline・16階層までです。ファイ
 「最近読んだ記事」、詳細検索、現在の条件全体を対象とする「全て既読」、最大100件の選択状態変更を実装しています。履歴は実際の詳細閲覧で記録し、一括既読やスター変更では増やしません。[検索条件・履歴・一括操作](docs/reader-productivity.md)を参照してください。
 
 フォルダー・フィードの並べ替えと幅変更は [ライブラリの配置](docs/sidebar-organization.md)を参照してください。順序は共有DB、幅はブラウザに保存します。
+
+[表示設定・設定エクスポート](docs/reader-settings-export.md)では、初期表示、UTC／日本時間、標準・1行・タイル表示と、安全な設定の持ち出しを扱います。

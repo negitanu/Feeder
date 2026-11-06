@@ -10,7 +10,7 @@
 
 移行元: [article-reader](../reference/feedastrolabe/specs/article-reader/spec.md)。要件: Article browsing、Persistent reading state。
 
-## configuration-export（段階 2–3、未着手）
+## configuration-export（段階 2–3、部分移植）
 
 移行元: [configuration-export](../reference/feedastrolabe/specs/configuration-export/spec.md)。要件: Versioned configuration download、Explicit allowlist and secret exclusion、Read-only authorized export。
 
@@ -109,3 +109,7 @@ Feeder `sidebar-organization` で DB による順序・所属保存、直接ド�
 ## 読書履歴・詳細条件・一括操作（2026-11-06）
 
 `reader-productivity` で実閲覧履歴、UTCの詳細条件、安定した並び、未描画を含む全件既読と選択状態の原子更新を実装・検証。署名付きcontinuationや表示timezoneなどの差分は [検証記録](verification-reader-productivity.md) で追跡する。旧仕様全体の完了とは区別する。
+
+## 表示設定・エクスポートの対応状況
+
+`reader-settings-export` で旧 `preferences.py` の初期表示・UTC/JST と `configuration_export.py` のバージョン付き・allowlist・秘密除外・読取専用の書き出しを移植。ブラウザの標準/1行/タイル、テーマ、幅、フォルダー開閉を現在のメモリー上の値から書き出す。旧のAI/connector/notification等の設定、API上限、設定全体の読み込み・旧DB完全変換は未完了。日付検索も共有タイムゾーンへ更新。詳細は[表示設定・持ち出し](reader-settings-export.md)を参照。

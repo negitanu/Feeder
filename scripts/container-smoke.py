@@ -48,6 +48,9 @@ try:
         subprocess.run(['node','scripts/productivity-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_SIDEBAR_SMOKE')=='1':
         subprocess.run(['node','scripts/sidebar-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    if env.get('FEEDER_SETTINGS_SMOKE')=='1':
+        subprocess.run(['node','scripts/settings-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    reader_settings_snapshot=json.loads(request('/api/reader/settings')[1])
     library_snapshot=json.loads(request('/api/library')[1])
     history_snapshot=json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])
     cmd('stop','--timeout','30')
@@ -60,6 +63,7 @@ try:
     restored=json.loads(request(f'/api/articles/{article_id}')[1]);assert restored['is_read'] and restored['is_starred']
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
     assert json.loads(request('/api/library')[1])==library_snapshot
+    assert json.loads(request('/api/reader/settings')[1])==reader_settings_snapshot
     assert json.loads(request('/api/collection/settings')[1])=={'enabled':False,'interval_seconds':120}
     subprocess.run([*restore_compose,'down','--volumes','--remove-orphans','--timeout','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restore_created=False
@@ -68,6 +72,7 @@ try:
     state=json.loads(body);assert state['is_read'] and state['is_starred']
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
     assert json.loads(request('/api/library')[1])==library_snapshot
+    assert json.loads(request('/api/reader/settings')[1])==reader_settings_snapshot
     status,body=request('/api/collection/settings');assert status==200 and json.loads(body)=={'enabled':False,'interval_seconds':120}
     cmd('stop','--timeout','30','worker')
     worker_id=cmd('ps','--all','--quiet','worker')
