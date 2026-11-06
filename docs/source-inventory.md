@@ -54,7 +54,7 @@ local は既存 Web サーバーの localhost 運用を指し、廃止対象の 
 
 移行元: [reader-interactions](../reference/feedastrolabe/specs/reader-interactions/spec.md)。要件: Persistent disclosure without reset control、Pause and resume subscriptions in context、Prominent scoped bulk read、Floating article detail and original access、Content-first article detail、Optional bounded hero image、Detail bounded by the article area、Mark displayed article as read、Global unread library entry。
 
-一覧を保持する詳細パネルと外側操作は [reader-floating-detail](../openspec/specs/reader-floating-detail/spec.md)、読み込み済み記事の前後移動は [reader-detail-navigation](../openspec/specs/reader-detail-navigation/spec.md) で実装。URL・ブラウザ履歴、矢印キー移動や画像・研究操作は引き続き未完了。
+一覧を保持する詳細パネルと外側操作は [reader-floating-detail](../openspec/specs/reader-floating-detail/spec.md)、読み込み済み記事の前後移動は [reader-detail-navigation](../openspec/specs/reader-detail-navigation/spec.md) で実装。Feeder独自の詳細内左右キー操作も追加。URL・ブラウザ履歴や画像・研究操作は引き続き未完了。
 
 ## reader-panel-polish（段階 1–2、未着手）
 
