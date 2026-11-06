@@ -28,6 +28,10 @@ export default function CollectionPanel({ folders, onChanged, onCreateFolder }: 
   const [settings, setSettings] = useState<Settings>({ enabled: false, interval_seconds: 900 })
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(true)
+  const [opmlBusy, setOpmlBusy] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [opmlError, setOpmlError] = useState('')
+  const opmlInput = useRef<HTMLInputElement>(null)
   const [xml, setXml] = useState('')
   const [opmlPreview, setOpmlPreview] = useState<OpmlPreview | null>(null)
   const [folderName, setFolderName] = useState('')
@@ -59,17 +63,26 @@ export default function CollectionPanel({ folders, onChanged, onCreateFolder }: 
     e.preventDefault(); setSettingsBusy(true); setError('')
     try { setSettings(await api<Settings>('/api/collection/settings', settings, 'PATCH')); settingsDirtyRef.current = false } catch (e) { setError((e as Error).message) } finally { setSettingsBusy(false) }
   }
+  function cancelOpml() {
+    if (importing) return
+    ++opmlRun.current; setOpmlPreview(null); setXml(''); setOpmlBusy(false); setOpmlError(''); setImportResult(null)
+    if (opmlInput.current) opmlInput.current.value = ''
+  }
   async function readOpml(file?: File) {
-    const run = ++opmlRun.current; setOpmlPreview(null); setXml(''); setImportResult(null); setError('')
+    if (importing) return
+    const run = ++opmlRun.current; setOpmlPreview(null); setXml(''); setImportResult(null); setOpmlError(''); setOpmlBusy(false)
+    if (opmlInput.current) opmlInput.current.value = ''
     if (!file) return
-    if (file.size > 1024 * 1024) { setError('OPML ファイルは 1 MiB 以下にしてください。'); return }
-    try { const contents = await file.text(); if (run !== opmlRun.current) return; setXml(contents); setBusy(true); const result = await api<OpmlPreview>('/api/opml/preview', { xml: contents }); if (run === opmlRun.current) setOpmlPreview(result) }
-    catch (e) { if (run === opmlRun.current) setError((e as Error).message) } finally { if (run === opmlRun.current) setBusy(false) }
+    if (file.size > 1024 * 1024) { setOpmlError('OPML ファイルは 1 MiB 以下にしてください。'); return }
+    setOpmlBusy(true)
+    try { const contents = await file.text(); if (run !== opmlRun.current) return; setXml(contents); const result = await api<OpmlPreview>('/api/opml/preview', { xml: contents }); if (run === opmlRun.current) setOpmlPreview(result) }
+    catch (e) { if (run === opmlRun.current) setOpmlError((e as Error).message) } finally { if (run === opmlRun.current) setOpmlBusy(false) }
   }
   async function importOpml() {
-    setBusy(true); setError('')
+    if (opmlBusy || importing || !opmlPreview || !xml) return
+    setImporting(true); setOpmlError('')
     try { setImportResult(await api('/api/opml/import', { xml })); setOpmlPreview(null); setXml(''); onChanged() }
-    catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+    catch (e) { setOpmlError((e as Error).message) } finally { setImporting(false) }
   }
   async function createFolder(e: React.FormEvent) { e.preventDefault(); if (!folderName.trim()) return; try { if (await onCreateFolder(folderName.trim())) setFolderName('') } catch (e) { setError((e as Error).message) } }
 
@@ -83,7 +96,7 @@ export default function CollectionPanel({ folders, onChanged, onCreateFolder }: 
     {preview && <div className="collection-card" aria-live="polite"><h2>登録前のプレビュー</h2><strong>{preview.title}</strong><small>{preview.url}</small><ul className="preview-entries">{preview.entries.slice(0, 5).map((entry, i) => <li key={`${entry.url}-${i}`}><span>{entry.title}</span><small>{entry.url}</small></li>)}</ul><label>フォルダー<select aria-label="登録先フォルダー" value={folder} onChange={e => setFolder(e.target.value)}><option value="">フォルダーなし</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label><button disabled={busy} onClick={() => void confirmFeed()}>{busy ? '登録しています…' : 'このフィードを登録'}</button></div>}
     <form className="folder-form" onSubmit={e => void createFolder(e)}><label>フォルダーを作成<input aria-label="フォルダー名" value={folderName} onChange={e => setFolderName(e.target.value)} placeholder="例：デザイン" /></label><button disabled={busy || !folderName.trim()}>作成</button></form>
     <section className="collection-section"><h2>自動収集</h2><p>停止中の購読は収集しません。無効にすると、新しい自動取得を停止します。</p><form className="settings-form" onSubmit={e => void saveSettings(e)}><label className="check-label"><input type="checkbox" disabled={settingsLoading || settingsBusy} checked={settings.enabled} onChange={e => { settingsDirtyRef.current = true; setSettings({ ...settings, enabled: e.target.checked }) }} />自動収集を有効にする</label><label>更新間隔（秒）<input aria-label="更新間隔（秒）" disabled={settingsLoading || settingsBusy} type="number" min="60" max="86400" required value={settings.interval_seconds} onChange={e => { settingsDirtyRef.current = true; setSettings({ ...settings, interval_seconds: Number(e.target.value) }) }} /></label><button disabled={settingsLoading || settingsBusy || settings.interval_seconds < 60 || settings.interval_seconds > 86400}>{settingsLoading ? '読み込み中…' : settingsBusy ? '保存中…' : '設定を保存'}</button></form></section>
-    <section className="collection-section"><h2>OPML の読み込み・書き出し</h2><p>OPML の読み込みは内容を確認してから実行します。ファイルは 1 MiB 以下にしてください。新しく読み込んだフィードは停止状態で追加されます。</p><label className="file-label">OPML ファイルを選択<input aria-label="OPML ファイル" type="file" accept=".opml,.xml,text/xml,application/xml" onChange={e => { setBusy(false); void readOpml(e.target.files?.[0]) }} /></label>{importResult && <p role="status">読み込み完了：追加 {importResult.added} 件・登録済み {importResult.existing} 件・重複 {importResult.duplicates} 件・無効 {importResult.invalid} 件</p>}{opmlPreview && <div className="collection-card"><h3>読み込み内容</h3><p>有効 {opmlPreview.valid} 件・新規 {opmlPreview.new} 件・登録済み {opmlPreview.existing} 件・重複 {opmlPreview.duplicates} 件・無効 {opmlPreview.invalid} 件</p><ul className="preview-entries">{opmlPreview.items.map((item, i) => <li key={`${item.url}-${i}`}><span>{item.title || item.url} <small>{item.status}</small></span><small>{item.folder || 'フォルダーなし'} · {item.url}</small></li>)}</ul><button disabled={busy} onClick={() => void importOpml()}>{busy ? '読み込み中…' : '確認して読み込む'}</button></div>}<a className="export-link" href="/api/opml/export" download>OPML を書き出す</a></section>
+    <section className="collection-section"><h2>OPML の読み込み・書き出し</h2><p>OPML の読み込みは内容を確認してから実行します。ファイルは 1 MiB 以下にしてください。新しく読み込んだフィードは停止状態で追加されます。</p><label className="file-label">OPML ファイルを選択<input ref={opmlInput} disabled={importing} aria-label="OPML ファイル" type="file" accept=".opml,.xml,text/xml,application/xml" onChange={e => void readOpml(e.target.files?.[0])} /></label>{importResult && <p role="status">読み込み完了：追加 {importResult.added} 件・登録済み {importResult.existing} 件・重複 {importResult.duplicates} 件・無効 {importResult.invalid} 件</p>}{opmlPreview && <div className="collection-card"><h3>読み込み内容</h3><p>有効 {opmlPreview.valid} 件・新規 {opmlPreview.new} 件・登録済み {opmlPreview.existing} 件・重複 {opmlPreview.duplicates} 件・無効 {opmlPreview.invalid} 件</p><ul className="preview-entries">{opmlPreview.items.map((item, i) => <li key={`${item.url}-${i}`}><span>{item.title || item.url} <small>{{ new: '新規', existing: '登録済み', duplicate: '重複', invalid: '無効' }[item.status] || item.status}</small></span><small>{item.folder || 'フォルダーなし'} · {item.url}</small></li>)}</ul><button disabled={opmlBusy || importing || !opmlPreview.new} onClick={() => void importOpml()}>{importing ? '読み込み中…' : '確認して読み込む'}</button></div>}{opmlBusy && <p role="status">OPML の内容を確認しています…</p>}{(opmlBusy || opmlPreview) && <button disabled={importing} onClick={cancelOpml}>OPML の読み込みを取り消す</button>}{opmlError && <p className="error-message" role="alert">{opmlError}</p>}<a className="export-link" href="/api/opml/export" download>OPML を書き出す</a></section>
     {error && <div className="error-message" role="alert">{error}</div>}
   </section>
 }

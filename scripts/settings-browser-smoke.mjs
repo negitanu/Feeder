@@ -22,6 +22,11 @@ try {
  const title=await page.locator('.article-card strong').last().innerText();await page.locator('.article-open').last().click();await page.getByRole('heading',{name:title,exact:true}).waitFor();await page.getByRole('button',{name:/一覧に戻る/}).click();assert.equal(await page.locator('.article-card').count(),36);assert.equal(await page.locator('.article-select:checked').count(),2);assert.equal(await page.locator('.article-list').getAttribute('data-layout'),'tiles');
  await page.reload();await page.locator('.article-card').first().waitFor();assert.equal(await page.getByRole('combobox',{name:'記事の表示形式',exact:true}).inputValue(),'tiles');
  await page.getByRole('button',{name:'集める',exact:true}).click();
+ const opml={name:'synthetic.opml',mimeType:'text/xml',buffer:Buffer.from('<opml version="2.0"><body><outline text="Synthetic" type="rss" xmlUrl="https://example.com/settings-workflow.xml"/></body></opml>')};
+ await page.getByLabel('OPML ファイル',{exact:true}).setInputFiles(opml);await page.getByRole('heading',{name:'読み込み内容',exact:true}).waitFor();await page.getByRole('button',{name:'OPML の読み込みを取り消す'}).click();assert.equal(await page.getByRole('heading',{name:'読み込み内容',exact:true}).count(),0);
+ await page.getByLabel('OPML ファイル',{exact:true}).setInputFiles(opml);await page.getByRole('heading',{name:'読み込み内容',exact:true}).waitFor();await page.getByRole('button',{name:'OPML の読み込みを取り消す'}).click();
+ await page.getByRole('button',{name:'設定',exact:true}).click();await page.getByRole('heading',{name:'表示設定',exact:true}).waitFor();assert.equal(await page.getByLabel('OPML ファイル',{exact:true}).count(),0);
+ await page.getByRole('button',{name:'集める',exact:true}).click();
  await page.getByRole('combobox',{name:'表示タイムゾーン',exact:true}).selectOption('Asia/Tokyo');await page.getByRole('combobox',{name:'初期表示',exact:true}).selectOption('unread');
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/reader/settings')&&r.request().method()==='PATCH');await page.getByRole('button',{name:'表示設定を保存',exact:true}).click();assert.equal((await saved).status(),200);await page.getByRole('status').filter({hasText:'表示設定を保存しました。'}).waitFor();
  assert.deepEqual(await get('/api/reader/settings'),{display_timezone:'Asia/Tokyo',default_view:'unread'});

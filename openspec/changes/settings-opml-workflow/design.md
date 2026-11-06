@@ -1,0 +1,2 @@
+## Design
+The settings page reuses existing presentation/export and API key controls. Collection retains compatibility access. OPML receives separate busy, importing and error state. File selection is disabled during import, cancel invalidates pending preview responses, and failed imports retain the preview for retry. Same-file selection resets the input. Requests continue through the CSRF-protected API client; no schema or data migration.
