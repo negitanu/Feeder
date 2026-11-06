@@ -1,0 +1,7 @@
+# OPML import and export
+
+Feeder accepts OPML text through `POST /api/opml/preview` and `POST /api/opml/import`, with a JSON body containing an `xml` string. Preview is read-only. Import is a separate explicit action; it parses and validates the supplied text again before inserting anything. Import never fetches a remote URL. New subscriptions enter the library paused, so the user can review them before collection.
+
+The parser accepts bounded UTF-8 XML up to 1 MiB, at most 1,000 outlines and nesting up to 16 levels. DTD and entity declarations are rejected. Each feed URL must be an absolute HTTP or HTTPS URL with no user information, and literal private, local, or reserved addresses are rejected. Fragments are removed before duplicate comparison. DNS hostnames are syntax-checked but their resolved addresses are not checked during import; the fetcher performs public-address validation when a feed is later fetched.
+
+Nested folders flatten into slash-separated folder names. Preview reports valid, new, existing, repeated, and invalid entries; importing repeats validation and reports added, existing, repeated, and invalid counts. `GET /api/opml/export` downloads escaped OPML containing subscriptions and their folder memberships, without article data or secrets. Feeder exports pause state in the `feeder:paused` extension attribute in the `https://feeder.invalid/ns/opml` namespace; import still starts subscriptions paused regardless of source extension values.
