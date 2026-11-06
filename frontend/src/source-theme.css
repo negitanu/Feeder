@@ -9,6 +9,12 @@
 .global-nav button.active{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 -3px var(--accent)}
 .workspace{max-width:none;margin:0;min-height:calc(100vh - 64px)}
 .sidebar{padding:18px 12px;background:var(--surface)}
+.source-list{grid-template-columns:minmax(0,1fr)}
+.folder-group{min-width:0;max-width:100%}
+.folder-row{width:100%;max-width:100%}
+.source-button{flex:1 1 0%;overflow:hidden}
+.source-button span{flex:1 1 0%;min-width:0}
+.feed-source small{flex:0 0 auto}
 .side-heading{padding:6px 8px 12px;letter-spacing:.7px;font-size:11px}
 .filter{height:36px;padding:6px 8px;border-radius:6px}.filters{gap:2px}
 .main-area{max-width:none;padding:24px 20px 64px}
