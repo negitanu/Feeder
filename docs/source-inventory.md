@@ -82,6 +82,8 @@ Python のバージョン要件は Rust へ読み替え、renderer の実装言�
 
 移行元: [sidebar-organization](../reference/feedastrolabe/specs/sidebar-organization/spec.md)。要件: Persistent folder and feed direct ordering、Move feeds between folders、Touch and keyboard parity、Resizable sidebar。
 
+Feeder `sidebar-organization` で DB による順序・所属保存、直接ドラッグ、キーボード、操作メニューからの移動、幅変更を移植。旧空名フォルダーのデータ変換は本移行の検証まで未完了。フォルダーなし(NULL)と文字列「未分類」のフォルダーは区別する。検証は[配置の検証](verification-sidebar-organization.md)を参照。
+
 ## watchlists-triage（段階 4、未着手）
 
 移行元: [watchlists-triage](../reference/feedastrolabe/specs/watchlists-triage/spec.md)。要件: Repeatable triage、Idempotent matching、Provenance-preserving groups。

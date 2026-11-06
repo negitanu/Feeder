@@ -44,7 +44,7 @@ docker compose build --pull
 docker compose up -d --wait
 ```
 
-再作成しても named volume は保持されます。既知の Feeder v1/v2/v3 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
+再作成しても named volume は保持されます。既知の Feeder v1/v2/v3/v4 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
 
 DB 変更を含む更新前には Web と worker の両方を止め、一貫したデータ一式を退避・復元確認します。Feeder は今後の根拠ファイル等も含めて保全する方針です。例として、停止中の `/data` をホストへ取得できます。
 
@@ -70,3 +70,5 @@ python3 scripts/container-smoke.py
 最後のスクリプトは UUID を使った新しい専用プロジェクトを作り、生成データで health、UI/API、Host/Origin、非root/read-only、再作成後の状態・設定保持、別volumeでのバックアップ復元、worker正常終了を検証します。終了時にその実行が作ったテストコンテナとテストvolumeだけを削除します。通常の `feeder` 環境は操作しません。
 
 ブラウザも接続する場合は、検証用Playwright/Chromiumを用意して `FEEDER_BROWSER_SMOKE=1 python3 scripts/container-smoke.py` を実行します。アプリ本体はLinuxコンテナ内で実行されます。
+
+DB v5 はライブラリの配置を保存します。v4 からの更新前には `feeder.v4-backup.sqlite3` を作ります。更新時は Web/worker の両方を停止し、以前のイメージへ戻す際は停止したまま更新前バックアップを別volumeへ復元して検証してください。v5 DB を以前のイメージへ直接渡さないでください。

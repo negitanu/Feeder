@@ -46,6 +46,9 @@ try:
         subprocess.run(['node','scripts/browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     if env.get('FEEDER_PRODUCTIVITY_SMOKE')=='1':
         subprocess.run(['node','scripts/productivity-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    if env.get('FEEDER_SIDEBAR_SMOKE')=='1':
+        subprocess.run(['node','scripts/sidebar-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+    library_snapshot=json.loads(request('/api/library')[1])
     history_snapshot=json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])
     cmd('stop','--timeout','30')
     backup=subprocess.check_output([*compose,'run','--rm','--no-deps','-T','--entrypoint','tar','web','-C','/data','-czf','-','.'],cwd=root,env=env)
@@ -56,6 +59,7 @@ try:
     subprocess.run([*restore_compose,'up','--no-build','-d','--wait','--wait-timeout','90'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restored=json.loads(request(f'/api/articles/{article_id}')[1]);assert restored['is_read'] and restored['is_starred']
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
+    assert json.loads(request('/api/library')[1])==library_snapshot
     assert json.loads(request('/api/collection/settings')[1])=={'enabled':False,'interval_seconds':120}
     subprocess.run([*restore_compose,'down','--volumes','--remove-orphans','--timeout','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restore_created=False
@@ -63,6 +67,7 @@ try:
     status,body=request(f'/api/articles/{article_id}');assert status==200
     state=json.loads(body);assert state['is_read'] and state['is_starred']
     assert json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])==history_snapshot
+    assert json.loads(request('/api/library')[1])==library_snapshot
     status,body=request('/api/collection/settings');assert status==200 and json.loads(body)=={'enabled':False,'interval_seconds':120}
     cmd('stop','--timeout','30','worker')
     worker_id=cmd('ps','--all','--quiet','worker')
