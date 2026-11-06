@@ -4,7 +4,7 @@ const MIN = 200, MAX = 480, DEFAULT = 250
 function savedWidth() {
   try { const raw = localStorage.getItem('feeder-sidebar-width'); const n = raw === null ? NaN : Number(raw); return Number.isFinite(n) && n >= MIN && n <= MAX ? n : DEFAULT } catch { return DEFAULT }
 }
-export default function SidebarWidth({ children }: { children: ReactNode }) {
+export default function SidebarWidth({ children, onWidthChange }: { children: ReactNode; onWidthChange: (width: number) => void }) {
   const [width, setWidth] = useState(savedWidth)
   const [available, setAvailable] = useState(MAX)
   const workspace = useRef<HTMLDivElement>(null)
@@ -16,6 +16,7 @@ export default function SidebarWidth({ children }: { children: ReactNode }) {
     observer.observe(el); return () => observer.disconnect()
   }, [])
   useEffect(() => { try { localStorage.setItem('feeder-sidebar-width', String(width)) } catch { /* Width remains usable in this session. */ } }, [width])
+  useEffect(() => { onWidthChange(width) }, [width,onWidthChange])
   const visible = Math.min(width,available)
   function change(value: number) { setWidth(Math.max(MIN,Math.min(available,value))) }
   function key(e: KeyboardEvent<HTMLDivElement>) {

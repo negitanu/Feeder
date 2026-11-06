@@ -3,6 +3,8 @@ import CollectionPanel from './CollectionPanel'
 import LibrarySidebar from './LibrarySidebar'
 import type { Folder, Feed } from './LibrarySidebar'
 import SidebarWidth from './SidebarWidth'
+import ReaderSettingsPanel, { storedLayout } from './ReaderSettingsPanel'
+import type { Layout, ReaderSettings } from './ReaderSettingsPanel'
 
 type Article = { id: number; title: string; content: string; url: string; published: string; is_read: boolean; is_starred: boolean; last_visited?: string | null }
 type Filter = 'all' | 'unread' | 'starred' | 'recent'
@@ -19,6 +21,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 function App() {
   const [filter, setFilter] = useState<Filter>('all')
+  const [readerSettings, setReaderSettings] = useState<ReaderSettings | null>(null)
+  const [layout, setLayout] = useState<Layout>(storedLayout)
+  const [sidebarWidth, setSidebarWidth] = useState(250)
+  const initialViewChosen = useRef(false)
+  const readerSettingsRef = useRef<ReaderSettings | null>(null)
+  const readerSettingsRun = useRef(0)
   const [draftScope, setDraftScope] = useState({ scope: 'both' as AppliedFilters['scope'], any: '', exclude: '', published_from: '', published_to: '', feed_ids: '', order: 'new' as AppliedFilters['order'] })
   const [applied, setApplied] = useState<AppliedFilters>({ order: 'new', scope: 'both' })
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -54,10 +62,25 @@ function App() {
     return p.toString()
   }, [applied, filter, search, source])
   const activeFilters = useMemo<AppliedFilters>(() => ({ ...applied, q: search.trim() || undefined, unread: filter === 'unread' || undefined, starred: filter === 'starred' || undefined, history: filter === 'recent' || undefined, feed_id: source?.kind === 'feed' ? source.id : undefined, folder_id: source?.kind === 'folder' ? source.id : undefined }), [applied, filter, search, source])
-  const filtersKey = JSON.stringify(activeFilters)
+  const filtersKey = JSON.stringify([activeFilters,readerSettings?.display_timezone])
   const filtersKeyRef = useRef(filtersKey)
   filtersKeyRef.current = filtersKey
   useEffect(() => { setSelectedIds([]) }, [filtersKey])
+
+  const applyReaderSettings = useCallback((value: ReaderSettings) => {
+    const previous = readerSettingsRef.current
+    readerSettingsRef.current = value; setReaderSettings(value)
+    if (!previous && !initialViewChosen.current) { setFilter(value.default_view); initialViewChosen.current = true }
+    if (previous && previous.display_timezone !== value.display_timezone) { setSelectedIds([]); setRefreshVersion(version => version + 1) }
+  }, [])
+  const loadReaderSettings = useCallback(async () => {
+    const run = ++readerSettingsRun.current
+    try { const value = await request<ReaderSettings>('/api/reader/settings'); if (readerSettingsRun.current === run) applyReaderSettings(value) }
+    catch { if (readerSettingsRun.current === run && !readerSettingsRef.current) { setError('表示設定を取得できませんでした。再試行してください。'); setLoading(false) } }
+  }, [applyReaderSettings])
+  useEffect(() => { void loadReaderSettings(); const refresh = () => { void loadReaderSettings() }; window.addEventListener('focus',refresh); return () => window.removeEventListener('focus',refresh) }, [loadReaderSettings])
+  useEffect(() => { try { localStorage.setItem('feeder-layout',layout) } catch { /* Keep session presentation available. */ } }, [layout])
+  function settingsSaved(value: ReaderSettings) { ++readerSettingsRun.current; applyReaderSettings(value) }
 
   const loadLibrary = useCallback(async () => {
     const current = ++libraryGeneration.current
@@ -87,6 +110,7 @@ function App() {
   }, [selected])
 
   const loadFirst = useCallback(async () => {
+    if (!readerSettings) return
     const currentGeneration = ++generation.current
     setLoading(true); setError(''); setSelected(null)
     try {
@@ -95,11 +119,11 @@ function App() {
       setItems(result.items); setTotal(result.total)
     } catch (e) { if (currentGeneration === generation.current) { setItems([]); setTotal(0); setError((e as Error).message) } }
     finally { if (currentGeneration === generation.current) setLoading(false) }
-  }, [params, refreshVersion])
+  }, [params, refreshVersion, readerSettings?.display_timezone, !!readerSettings])
   useEffect(() => { void loadFirst() }, [loadFirst])
 
   const loadMore = useCallback(async () => {
-    if (moreLoading || loading || items.length >= total) return
+    if (!readerSettings || moreLoading || loading || items.length >= total) return
     setMoreLoading(true)
     const currentGeneration = generation.current
     try {
@@ -109,7 +133,7 @@ function App() {
       setItems(current => [...current, ...result.items.filter(a => !current.some(c => c.id === a.id))]); setTotal(result.total)
     } catch (e) { setError((e as Error).message) }
     finally { setMoreLoading(false) }
-  }, [items.length, loading, moreLoading, offset, params, total])
+  }, [items.length, loading, moreLoading, offset, params, total, readerSettings])
   useEffect(() => {
     const node = sentinel.current
     if (!node || typeof IntersectionObserver === 'undefined') return
@@ -181,10 +205,11 @@ function App() {
     finally { setBusy(false) }
   }
   const json = (body: unknown): RequestInit => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  function selectSource(value: { kind: 'feed' | 'folder'; id: number } | null) { setSource(value); setPage('read'); setSelected(null) }
+  function selectSource(value: { kind: 'feed' | 'folder'; id: number } | null) { initialViewChosen.current = true; setSource(value); setPage('read'); setSelected(null) }
   const date = (value: string) => {
-    const d = new Date(value)
-    return Number.isNaN(d.getTime()) ? value : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium' }).format(d)
+    const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value) ? value.replace(' ','T') + 'Z' : value
+    const d = new Date(normalized)
+    return Number.isNaN(d.getTime()) ? '公開日不明' : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeZone: readerSettings?.display_timezone ?? 'UTC' }).format(d)
   }
 
   return <div className="app-shell">
@@ -194,12 +219,12 @@ function App() {
       <form className="search" onSubmit={submitSearch} role="search"><span aria-hidden="true">⌕</span><input aria-label="記事を検索" placeholder="記事を検索..." value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" aria-label="検索">検索</button></form>
       <label className="theme-control"><span className="sr-only">テーマ</span><select aria-label="テーマ" value={theme} onChange={e => setTheme(e.target.value as Theme)}><option value="system">システム</option><option value="light">ライト</option><option value="dark">ダーク</option></select><span aria-hidden="true">◐</span></label>
     </header>
-    <SidebarWidth>
+    <SidebarWidth onWidthChange={setSidebarWidth}>
       <aside id="reader-sidebar" className="sidebar" aria-label="記事フィルター"><div className="side-heading">ライブラリ</div><nav className="filters">
-        {([['all', 'すべて', '▤'], ['unread', '未読', '◉'], ['starred', 'スター付き', '☆'], ['recent', '最近読んだ記事', '◷']] as [Filter, string, string][]).map(([key, label, icon]) => <button key={key} className={`filter ${filter === key ? 'active' : ''}`} onClick={() => { setFilter(key); setSource(null); setSelected(null); setPage('read'); if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={filter === key ? 'page' : undefined}><span className="filter-icon">{icon}</span>{label}{key === 'all' && <span className="count">{total}</span>}</button>)}
+        {([['all', 'すべて', '▤'], ['unread', '未読', '◉'], ['starred', 'スター付き', '☆'], ['recent', '最近読んだ記事', '◷']] as [Filter, string, string][]).map(([key, label, icon]) => <button key={key} className={`filter ${filter === key ? 'active' : ''}`} onClick={() => { initialViewChosen.current = true; setFilter(key); setSource(null); setSelected(null); setPage('read'); if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={filter === key ? 'page' : undefined}><span className="filter-icon">{icon}</span>{label}{key === 'all' && <span className="count">{total}</span>}</button>)}
       </nav><LibrarySidebar folders={folders} feeds={feeds} source={source} collapsed={collapsed} onToggle={id => setCollapsed(current => current.includes(id) ? current.filter(value => value !== id) : [...current,id])} onSelect={selectSource} onEditFeed={setEditingFeed} onEditFolder={setEditingFolder} onMutate={mutate} onReload={loadLibrary} onMembershipChanged={ids => { if (source?.kind === 'folder' && ids.includes(source.id)) { setSelectedIds([]); setRefreshVersion(value => value + 1) } }} />{libraryError && <div className="sidebar-error" role="alert">{libraryError}</div>}</aside>
       <main className="main-area">
-        {page === 'collect' && <><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
+        {page === 'collect' && <><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /><ReaderSettingsPanel settings={readerSettings} presentation={{ appearance: theme, width: Math.round(sidebarWidth), layout, collapsed_folders: [...new Set(collapsed.filter(id => id > 0 && folders.some(folder => folder.id === id)))].slice(0,2000) }} onSaved={settingsSaved} onLayout={setLayout} onTheme={setTheme} onRetry={() => void loadReaderSettings()} />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
         {page === 'read' && <>
         {selected && <section className="article-detail" aria-label="記事の詳細">
           <div className="detail-toolbar"><button className="back-button" onClick={() => setSelected(null)}>← <span>一覧に戻る</span></button><button onClick={() => void updateState(selected, { read: !selected.is_read })}>{selected.is_read ? '未読にする' : '既読にする'}</button><button className={`icon-button star-button ${selected.is_starred ? 'is-starred' : ''}`} aria-label={selected.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={selected.is_starred} onClick={() => void updateState(selected, { starred: !selected.is_starred })}>{selected.is_starred ? '★' : '☆'}</button></div>
@@ -208,14 +233,14 @@ function App() {
         </section>}
         <section hidden={!!selected}>
           <section className="list-heading"><div><div className="eyebrow">YOUR READING SPACE</div><h1>{source ? (source.kind === 'feed' ? feeds.find(f => f.id === source.id)?.title : folders.find(f => f.id === source.id)?.name) || '記事' : filter === 'all' ? '記事' : filter === 'unread' ? '未読' : filter === 'recent' ? '最近読んだ記事' : 'スター付き'}</h1><p>{search ? `「${search}」の検索結果` : '保存した記事を、あなたのペースで。'}</p></div><span className="result-count">{total} 件</span></section>
-          <div className="reader-actions"><button type="button" className="read-all" disabled={bulkBusy || loading || !total} onClick={() => void markAllRead()}>全て既読</button></div><details className="advanced-filters"><summary>詳細検索</summary><form onSubmit={e => void applyAdvanced(e)}><div className="advanced-row"><label>検索対象<select aria-label="検索対象" value={draftScope.scope} onChange={e => setDraftScope({ ...draftScope, scope: e.target.value as AppliedFilters['scope'] })}><option value="both">タイトルと本文</option><option value="title">タイトル</option><option value="body">本文</option></select></label><label>並び順<select aria-label="並び順" value={draftScope.order} onChange={e => setDraftScope({ ...draftScope, order: e.target.value as AppliedFilters['order'] })}><option value="new">新しい順</option><option value="old">古い順</option><option value="recent">最近見た順</option></select></label><label>公開日・開始<input aria-label="公開日・開始" type="date" value={draftScope.published_from} onChange={e => setDraftScope({ ...draftScope, published_from: e.target.value })} /></label><label>公開日・終了<input aria-label="公開日・終了" type="date" value={draftScope.published_to} onChange={e => setDraftScope({ ...draftScope, published_to: e.target.value })} /></label></div><div className="advanced-row"><label>いずれかを含む<input aria-label="いずれかを含む" value={draftScope.any} onChange={e => setDraftScope({ ...draftScope, any: e.target.value })} /></label><label>含まない<input aria-label="含まない" value={draftScope.exclude} onChange={e => setDraftScope({ ...draftScope, exclude: e.target.value })} /></label><details className="feed-picker"><summary>対象フィード</summary><div>{feeds.map(feed => <label key={feed.id}><input type="checkbox" checked={draftScope.feed_ids.split(',').filter(Boolean).includes(String(feed.id))} onChange={e => { const ids = new Set(draftScope.feed_ids.split(',').filter(Boolean)); e.target.checked ? ids.add(String(feed.id)) : ids.delete(String(feed.id)); setDraftScope({ ...draftScope, feed_ids: [...ids].join(',') }) }} />{feed.title || feed.url}</label>)}</div></details><button>条件を適用</button><button type="button" onClick={() => { const order = filter === 'recent' ? 'recent' : 'new'; setDraftScope({ scope: 'both', order, any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }); setApplied({ scope: 'both', order }) }}>詳細条件をクリア</button></div></form></details>
+          <div className="reader-actions"><label className="layout-control">表示形式<select aria-label="記事の表示形式" value={layout} onChange={e => setLayout(e.target.value as Layout)}><option value="standard">標準</option><option value="line">1行</option><option value="tiles">タイル</option></select></label><span className="timezone-label">日付: {readerSettings?.display_timezone === 'Asia/Tokyo' ? '日本時間（JST）' : 'UTC'}</span><button type="button" className="read-all" disabled={bulkBusy || loading || !total} onClick={() => void markAllRead()}>全て既読</button></div><details className="advanced-filters"><summary>詳細検索</summary><form onSubmit={e => void applyAdvanced(e)}><div className="advanced-row"><label>検索対象<select aria-label="検索対象" value={draftScope.scope} onChange={e => setDraftScope({ ...draftScope, scope: e.target.value as AppliedFilters['scope'] })}><option value="both">タイトルと本文</option><option value="title">タイトル</option><option value="body">本文</option></select></label><label>並び順<select aria-label="並び順" value={draftScope.order} onChange={e => setDraftScope({ ...draftScope, order: e.target.value as AppliedFilters['order'] })}><option value="new">新しい順</option><option value="old">古い順</option><option value="recent">最近見た順</option></select></label><label>公開日・開始<input aria-label="公開日・開始" type="date" value={draftScope.published_from} onChange={e => setDraftScope({ ...draftScope, published_from: e.target.value })} /></label><label>公開日・終了<input aria-label="公開日・終了" type="date" value={draftScope.published_to} onChange={e => setDraftScope({ ...draftScope, published_to: e.target.value })} /></label></div><div className="advanced-row"><label>いずれかを含む<input aria-label="いずれかを含む" value={draftScope.any} onChange={e => setDraftScope({ ...draftScope, any: e.target.value })} /></label><label>含まない<input aria-label="含まない" value={draftScope.exclude} onChange={e => setDraftScope({ ...draftScope, exclude: e.target.value })} /></label><details className="feed-picker"><summary>対象フィード</summary><div>{feeds.map(feed => <label key={feed.id}><input type="checkbox" checked={draftScope.feed_ids.split(',').filter(Boolean).includes(String(feed.id))} onChange={e => { const ids = new Set(draftScope.feed_ids.split(',').filter(Boolean)); e.target.checked ? ids.add(String(feed.id)) : ids.delete(String(feed.id)); setDraftScope({ ...draftScope, feed_ids: [...ids].join(',') }) }} />{feed.title || feed.url}</label>)}</div></details><button>条件を適用</button><button type="button" onClick={() => { const order = filter === 'recent' ? 'recent' : 'new'; setDraftScope({ scope: 'both', order, any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }); setApplied({ scope: 'both', order }) }}>詳細条件をクリア</button></div></form></details>
           {notice && <div className="success-message" role="status">{notice}</div>}
           {selectedIds.length > 0 && <div className="bulk-toolbar"><span>{selectedIds.length} 件選択中</span><button disabled={bulkBusy} onClick={() => void bulkState({ read: true })}>選択を既読にする</button><button disabled={bulkBusy} onClick={() => void bulkState({ read: false })}>選択を未読にする</button><button disabled={bulkBusy} onClick={() => void bulkState({ starred: true })}>選択にスターを付ける</button><button disabled={bulkBusy} onClick={() => void bulkState({ starred: false })}>選択のスター解除</button><button onClick={() => setSelectedIds([])}>選択解除</button></div>}
-          {error && <div className="error-message" role="alert">{error}<button onClick={() => void loadFirst()}>再試行</button></div>}
-          <div className="article-list" aria-label="記事一覧" aria-busy={loading}>
+          {error && <div className="error-message" role="alert">{error}<button onClick={() => void (readerSettings ? loadFirst() : loadReaderSettings())}>再試行</button></div>}
+          <div className={`article-list layout-${layout}`} data-layout={layout} aria-label="記事一覧" aria-busy={loading}>
             {loading ? <div className="empty-state"><span className="spinner" />記事を読み込んでいます...</div> : items.length === 0 ? <div className="empty-state"><span className="empty-icon">▤</span><strong>{error ? '読み込みに失敗しました' : '記事がありません'}</strong><span>{error ? '接続を確認して、再試行してください。' : '条件に合う記事が見つかりませんでした。'}</span></div> : items.map(article => <article key={article.id} className={`article-card ${article.is_read ? 'read' : ''}`}>
               <input className="article-select" aria-label={`記事を選択: ${article.title}`} type="checkbox" checked={selectedIds.includes(article.id)} onChange={e => setSelectedIds(current => e.target.checked ? current.length < 100 ? [...current, article.id] : current : current.filter(id => id !== article.id))} />
-              <button className="article-open" data-article-id={article.id} onClick={() => void openArticle(article)}><span className="unread-mark" aria-hidden="true" /><span className="card-copy"><span className="card-meta"><time>{date(article.published)}</time><span className="meta-separator">·</span><span className="source">{(() => { try { return new URL(article.url).hostname.replace(/^www\./, '') } catch { return '記事' } })()}</span></span><strong>{article.title}</strong><span className="excerpt">{article.content.slice(0, 180)}{article.content.length > 180 ? '…' : ''}</span></span></button>
+              <button className="article-open" data-article-id={article.id} onClick={() => void openArticle(article)}><span className="unread-mark" aria-hidden="true" /><span className="card-copy"><span className="card-meta"><time dateTime={article.published}>{date(article.published)}</time><span className="meta-separator">·</span><span className="source">{(() => { try { return new URL(article.url).hostname.replace(/^www\./, '') } catch { return '記事' } })()}</span></span><strong>{article.title}</strong><span className="excerpt">{article.content.slice(0, 180)}{article.content.length > 180 ? '…' : ''}</span></span></button>
               <button className={`icon-button card-star ${article.is_starred ? 'is-starred' : ''}`} aria-label={article.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={article.is_starred} onClick={() => void updateState(article, { starred: !article.is_starred })}>{article.is_starred ? '★' : '☆'}</button>
             </article>)}
             <div ref={sentinel} className="load-sentinel" aria-hidden="true" />
