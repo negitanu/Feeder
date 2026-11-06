@@ -1,0 +1,2769 @@
+{
+  "source_commit": "b9592aa641f254a29a626937a6c02d7fcae54a6c",
+  "note": "Source worktree inventory; may contain uncommitted source changes. Routes are decorator fragments; blueprint prefixes and authorization require review. No runtime data accessed.",
+  "modules": [
+    {
+      "path": "feedastrolabe/__init__.py",
+      "sha256": "0a6646b6654a07e1cde46a8782cb1f9e8636f4dba32b4a2954ee93717a6d8500",
+      "routes": [
+        {
+          "path": "/articles/more",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 207
+        },
+        {
+          "path": "/folders",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 207
+        },
+        {
+          "path": "/",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 207
+        },
+        {
+          "path": "/feeds",
+          "methods": [
+            "POST"
+          ],
+          "function": "subscribe",
+          "line": 301
+        },
+        {
+          "path": "/feeds/<int:feed_id>/folder",
+          "methods": [
+            "POST"
+          ],
+          "function": "folder",
+          "line": 316
+        },
+        {
+          "path": "/feeds/<int:feed_id>/delete",
+          "methods": [
+            "POST"
+          ],
+          "function": "delete_feed",
+          "line": 327
+        },
+        {
+          "path": "/refresh",
+          "methods": [
+            "POST"
+          ],
+          "function": "refresh",
+          "line": 338
+        },
+        {
+          "path": "/articles/<int:article_id>/<action>",
+          "methods": [
+            "POST"
+          ],
+          "function": "article_action",
+          "line": 350
+        },
+        {
+          "path": "/articles/<int:article_id>/visit",
+          "methods": [
+            "POST"
+          ],
+          "function": "visit_article",
+          "line": 367
+        },
+        {
+          "path": "/articles/<int:article_id>/open",
+          "methods": [
+            "POST"
+          ],
+          "function": "open_article",
+          "line": 387
+        },
+        {
+          "path": "/reading-prefs",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_reading_prefs",
+          "line": 396
+        },
+        {
+          "path": "/articles/bulk-state",
+          "methods": [
+            "POST"
+          ],
+          "function": "selected_state",
+          "line": 406
+        },
+        {
+          "path": "/articles/read-all",
+          "methods": [
+            "POST"
+          ],
+          "function": "read_all",
+          "line": 426
+        },
+        {
+          "path": "/articles/<int:article_id>/read-next",
+          "methods": [
+            "POST"
+          ],
+          "function": "read_next",
+          "line": 435
+        },
+        {
+          "path": "/healthz",
+          "methods": [
+            "GET"
+          ],
+          "function": "health",
+          "line": 457
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/__main__.py",
+      "sha256": "f3a47f7a84fd97b6292068216adc75736dbf13f34611f5372c262633a3cf27c0",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/access.py",
+      "sha256": "63fc216814a32431fecee79e6c7e0015a33af50ad7ad0999c9e48cd1b4c01c12",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/ai_providers.py",
+      "sha256": "a705c6f850548207f67797ed592c6a3272180ebc548eea1a6724c620a81fe483",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/ai_research.py",
+      "sha256": "920f127f3868faef7fdabaaea92b4f451160482c14175f76b1d551914a434c0b",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/ai_research_adapters.py",
+      "sha256": "dd0d2419c5baf6762946a4e558ede5392ca7366f8a686cfbe9a5bcc490e72960",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/ai_research_api.py",
+      "sha256": "30f0ce93297cd37a2e3081ad49180458c1cf8524acc042734e75989909dde630",
+      "routes": [
+        {
+          "path": "/workspaces/<int:identifier>/ai-watches",
+          "methods": [
+            "GET"
+          ],
+          "function": "watches",
+          "line": 9
+        },
+        {
+          "path": "/workspaces/<int:identifier>/ai-watches",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_watch",
+          "line": 14
+        },
+        {
+          "path": "/ai-watches/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "watch",
+          "line": 19
+        },
+        {
+          "path": "/ai-watches/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_watch",
+          "line": 23
+        },
+        {
+          "path": "/ai-watches/<int:identifier>/lookup",
+          "methods": [
+            "POST"
+          ],
+          "function": "lookup",
+          "line": 28
+        },
+        {
+          "path": "/ai-watches/<int:identifier>/versions",
+          "methods": [
+            "GET"
+          ],
+          "function": "versions",
+          "line": 33
+        },
+        {
+          "path": "/workspaces/<int:identifier>/ai-cards",
+          "methods": [
+            "GET"
+          ],
+          "function": "cards",
+          "line": 39
+        },
+        {
+          "path": "/workspaces/<int:identifier>/ai-cards",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_card",
+          "line": 44
+        },
+        {
+          "path": "/ai-cards/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "card",
+          "line": 49
+        },
+        {
+          "path": "/ai-cards/<int:identifier>/links",
+          "methods": [
+            "POST"
+          ],
+          "function": "link",
+          "line": 53
+        },
+        {
+          "path": "/ai-cards/<int:identifier>/benchmarks",
+          "methods": [
+            "GET"
+          ],
+          "function": "benchmarks",
+          "line": 58
+        },
+        {
+          "path": "/ai-cards/<int:identifier>/benchmarks",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_benchmark",
+          "line": 63
+        },
+        {
+          "path": "/ai-benchmarks/<int:left>/compare/<int:right>",
+          "methods": [
+            "GET"
+          ],
+          "function": "compare",
+          "line": 68
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/ai_research_schema.py",
+      "sha256": "e669fdae9c961ff2573d8799e9d6e367221ff63bf11de02c6587d0fe1a97a599",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/ai_research_ui.py",
+      "sha256": "91a059cfe245c64bf7b015847965deb0ffc807781c38d535f16d7a237130597e",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 8
+        },
+        {
+          "path": "/watches",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_watch",
+          "line": 21
+        },
+        {
+          "path": "/watches/<int:watch_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "watch",
+          "line": 26
+        },
+        {
+          "path": "/watches/<int:watch_id>/lookup",
+          "methods": [
+            "POST"
+          ],
+          "function": "lookup",
+          "line": 34
+        },
+        {
+          "path": "/watches/<int:watch_id>/update",
+          "methods": [
+            "POST"
+          ],
+          "function": "update",
+          "line": 39
+        },
+        {
+          "path": "/cards",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_card",
+          "line": 46
+        },
+        {
+          "path": "/cards/<int:card_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "card",
+          "line": 52
+        },
+        {
+          "path": "/cards/<int:card_id>/links",
+          "methods": [
+            "POST"
+          ],
+          "function": "add_link",
+          "line": 58
+        },
+        {
+          "path": "/cards/<int:card_id>/benchmarks",
+          "methods": [
+            "POST"
+          ],
+          "function": "benchmark",
+          "line": 63
+        },
+        {
+          "path": "/compare",
+          "methods": [
+            "GET"
+          ],
+          "function": "compare",
+          "line": 70
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/api.py",
+      "sha256": "2fb21e808d91f2301a4ff5f0da90054894f7b32c0ec23ce135e109e99396d6a8",
+      "routes": [
+        {
+          "path": "/feeds",
+          "methods": [
+            "GET"
+          ],
+          "function": "list_feeds",
+          "line": 52
+        },
+        {
+          "path": "/feeds/<int:feed_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_feed",
+          "line": 57
+        },
+        {
+          "path": "/feeds",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_feed",
+          "line": 65
+        },
+        {
+          "path": "/social-research",
+          "methods": [
+            "GET"
+          ],
+          "function": "list_social_research",
+          "line": 127
+        },
+        {
+          "path": "/social-research/<int:feed_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_social_research",
+          "line": 136
+        },
+        {
+          "path": "/social-research/ai/config",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_social_ai_config",
+          "line": 145
+        },
+        {
+          "path": "/social-research/ai/config",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "configure_social_ai",
+          "line": 151
+        },
+        {
+          "path": "/social-research/<int:feed_id>/ai/settings",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "configure_social_ai_topic",
+          "line": 159
+        },
+        {
+          "path": "/social-research/<int:feed_id>/ai/jobs",
+          "methods": [
+            "POST"
+          ],
+          "function": "enqueue_social_ai",
+          "line": 173
+        },
+        {
+          "path": "/social-research/ai/jobs/<int:job_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_social_ai_job",
+          "line": 190
+        },
+        {
+          "path": "/articles",
+          "methods": [
+            "GET"
+          ],
+          "function": "list_articles",
+          "line": 200
+        },
+        {
+          "path": "/articles/<int:article_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_article",
+          "line": 264
+        },
+        {
+          "path": "/articles/<int:article_id>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_article",
+          "line": 272
+        },
+        {
+          "path": "/feeds/<int:feed_id>/observe",
+          "methods": [
+            "POST"
+          ],
+          "function": "observe_feed",
+          "line": 286
+        },
+        {
+          "path": "/feeds/<int:feed_id>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_feed",
+          "line": 310
+        },
+        {
+          "path": "/feeds/<int:feed_id>",
+          "methods": [
+            "DELETE"
+          ],
+          "function": "delete_feed",
+          "line": 322
+        },
+        {
+          "path": "/feeds/<int:feed_id>/refresh",
+          "methods": [
+            "POST"
+          ],
+          "function": "refresh_feed",
+          "line": 329
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/article_hero.py",
+      "sha256": "43192e12de1a4389ce004a6dcf8643d3d22ac98c8814b314410ca5fa61d3925a",
+      "routes": [
+        {
+          "path": "/articles/<int:article_id>/hero",
+          "methods": [
+            "GET"
+          ],
+          "function": "image",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/assistant.py",
+      "sha256": "38c64b2c2680a1c65cf3c81eaa1e5d8763af925803dd2641f0a814ecf89e6fcd",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/assistant_api.py",
+      "sha256": "5ffc873bb8464f689ef5ea21c72d109f4e92d1ee0305c2ab933f4564ba455078",
+      "routes": [
+        {
+          "path": "/assistant-profiles",
+          "methods": [
+            "GET"
+          ],
+          "function": "profiles",
+          "line": 9
+        },
+        {
+          "path": "/assistant-profiles",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_profile",
+          "line": 12
+        },
+        {
+          "path": "/assistant-profiles/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_profile",
+          "line": 17
+        },
+        {
+          "path": "/workspaces/<int:identifier>/assistant-previews",
+          "methods": [
+            "POST"
+          ],
+          "function": "preview",
+          "line": 22
+        },
+        {
+          "path": "/assistant-previews/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_preview",
+          "line": 27
+        },
+        {
+          "path": "/assistant-previews/<int:identifier>/jobs",
+          "methods": [
+            "POST"
+          ],
+          "function": "enqueue",
+          "line": 31
+        },
+        {
+          "path": "/workspaces/<int:identifier>/assistant-jobs",
+          "methods": [
+            "GET"
+          ],
+          "function": "jobs",
+          "line": 36
+        },
+        {
+          "path": "/assistant-jobs/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 41
+        },
+        {
+          "path": "/assistant-jobs/<int:identifier>/reviews",
+          "methods": [
+            "GET"
+          ],
+          "function": "reviews",
+          "line": 45
+        },
+        {
+          "path": "/assistant-jobs/<int:identifier>/reviews",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_review",
+          "line": 50
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/assistant_http.py",
+      "sha256": "49e0df05a0a0a35c369eaea6cddebe4f9391dec1c69812b23b7732c9ad1b8564",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/assistant_schema.py",
+      "sha256": "bb004e88e47293a2af86f886fd08afcdefaa88b6e7ec2e91b1045ae3266242f0",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/assistant_ui.py",
+      "sha256": "e2a8e0a33b699bda20e41db65bc62a44b660b2f6efb3f522e1e2eacc4f251a8b",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 9
+        },
+        {
+          "path": "/profiles",
+          "methods": [
+            "POST"
+          ],
+          "function": "profile",
+          "line": 18
+        },
+        {
+          "path": "/profiles/<int:profile_id>/update",
+          "methods": [
+            "POST"
+          ],
+          "function": "update_profile",
+          "line": 28
+        },
+        {
+          "path": "/previews",
+          "methods": [
+            "POST"
+          ],
+          "function": "preview",
+          "line": 35
+        },
+        {
+          "path": "/previews/<int:preview_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "get_preview",
+          "line": 44
+        },
+        {
+          "path": "/previews/<int:preview_id>/jobs",
+          "methods": [
+            "POST"
+          ],
+          "function": "enqueue",
+          "line": 49
+        },
+        {
+          "path": "/jobs/<int:job_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 54
+        },
+        {
+          "path": "/jobs/<int:job_id>/reviews",
+          "methods": [
+            "POST"
+          ],
+          "function": "review",
+          "line": 60
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/attachment_parser.py",
+      "sha256": "754bcc12468fa7dde715790236bf5c3e9cb7256d85f2deaed16f7b4e56c1f493",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/attachments.py",
+      "sha256": "2503c2817c3895f99eaea45fd66d34f3eb2716962ef35d6fc25ba0e034c1a3e2",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/collection.py",
+      "sha256": "92d72e9c67ada3426f24f0de211dc55a382c63c52af704582e06eb9efd1b3691",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/configuration_export.py",
+      "sha256": "394cbc9848edbafa250398865b0e48b6ea4917dc0c3bb191be9be89141962ecc",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/connector_http.py",
+      "sha256": "965cb0610a0577cd78d3ee0e6c9792f78b1293a97c6f39de30c3d4776247b184",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/connector_registry.py",
+      "sha256": "1350266a735d9a184753500f3a02f19b0c915ffdb53cb404b80a8a27b916b44f",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/connector_schema.py",
+      "sha256": "a225c89dc83c42c2706391c44bd072dea63fbb7c943fb3dacb7ed1e9539d99c8",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/connectors.py",
+      "sha256": "2f58a84dbf91a6db328efabaa23b50761ff0f47f99f94f2c961bbfdd0ed79e8f",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/db.py",
+      "sha256": "57127162a0fffaef4f44a87831e4e4be0eb3d61caa3c6d08649d4609a4aba0b3",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/delivery.py",
+      "sha256": "e11180abaeaee4f1c6aed8e0983d2d2cc41bb5f8d4d1c45a2501e770002b4d17",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/delivery_transport.py",
+      "sha256": "e6f5f5de2311f300eb0761557d86166acc95d98c8303ab75075663872614b819",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/discovery.py",
+      "sha256": "6029e43746fdf0c99b4f8e3f202bdd49df2ff441bddf2502cec0143259e829b6",
+      "routes": [
+        {
+          "path": "/sources/discover",
+          "methods": [
+            "POST"
+          ],
+          "function": "discover",
+          "line": 91
+        },
+        {
+          "path": "/sources/confirm",
+          "methods": [
+            "POST"
+          ],
+          "function": "confirm",
+          "line": 102
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/display_time.py",
+      "sha256": "dcb775168f8778100eb3b9e17a98e93f1f1931851a80e73a20f14c4884b5930a",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/entities.py",
+      "sha256": "9f24903e3c94bff38d9086df6011eac38112c640aa9bf1bbf36a2a30890f3e3d",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/entities_api.py",
+      "sha256": "2525a8df83973d7819b735d74dbd9925a02856df6e8a0bc337ae5963d717afe6",
+      "routes": [
+        {
+          "path": "/entities",
+          "methods": [
+            "GET"
+          ],
+          "function": "listing",
+          "line": 33
+        },
+        {
+          "path": "/entities",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 37
+        },
+        {
+          "path": "/entities/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 42
+        },
+        {
+          "path": "/entities/<int:identifier>/aliases",
+          "methods": [
+            "GET"
+          ],
+          "function": "aliases",
+          "line": 47
+        },
+        {
+          "path": "/entities/<int:identifier>/aliases",
+          "methods": [
+            "POST"
+          ],
+          "function": "alias",
+          "line": 52
+        },
+        {
+          "path": "/entities/<int:identifier>/merge",
+          "methods": [
+            "POST"
+          ],
+          "function": "merge",
+          "line": 58
+        },
+        {
+          "path": "/entities/<int:identifier>/unmerge",
+          "methods": [
+            "POST"
+          ],
+          "function": "merge",
+          "line": 58
+        },
+        {
+          "path": "/entities/<int:identifier>/mentions",
+          "methods": [
+            "GET"
+          ],
+          "function": "mentions",
+          "line": 73
+        },
+        {
+          "path": "/evidence/<int:identifier>/mentions",
+          "methods": [
+            "GET"
+          ],
+          "function": "evidence_mentions",
+          "line": 78
+        },
+        {
+          "path": "/mentions",
+          "methods": [
+            "POST"
+          ],
+          "function": "add_mention",
+          "line": 86
+        },
+        {
+          "path": "/mentions/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "mention",
+          "line": 91
+        },
+        {
+          "path": "/mentions/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "correct",
+          "line": 95
+        },
+        {
+          "path": "/evidence/<int:identifier>/extract-entities",
+          "methods": [
+            "POST"
+          ],
+          "function": "extract",
+          "line": 100
+        },
+        {
+          "path": "/entities/<int:identifier>/timeline",
+          "methods": [
+            "GET"
+          ],
+          "function": "timeline",
+          "line": 115
+        },
+        {
+          "path": "/entities/<int:identifier>/graph",
+          "methods": [
+            "GET"
+          ],
+          "function": "graph",
+          "line": 120
+        },
+        {
+          "path": "/relations",
+          "methods": [
+            "GET"
+          ],
+          "function": "relations",
+          "line": 139
+        },
+        {
+          "path": "/workspaces/<int:identifier>/relations",
+          "methods": [
+            "POST"
+          ],
+          "function": "add_relation",
+          "line": 143
+        },
+        {
+          "path": "/relations/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "relation",
+          "line": 148
+        },
+        {
+          "path": "/relations/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "edit_relation",
+          "line": 152
+        },
+        {
+          "path": "/relations/<int:identifier>/revisions",
+          "methods": [
+            "GET"
+          ],
+          "function": "relation_versions",
+          "line": 157
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/entities_ui.py",
+      "sha256": "0a72111902d74f162cb443b5a22e440297e3c1bedf9316e53c94fa0fbc8b1623",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 17
+        },
+        {
+          "path": "/create",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 23
+        },
+        {
+          "path": "/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 28
+        },
+        {
+          "path": "/<int:identifier>/alias",
+          "methods": [
+            "POST"
+          ],
+          "function": "alias",
+          "line": 39
+        },
+        {
+          "path": "/<int:identifier>/merge",
+          "methods": [
+            "POST"
+          ],
+          "function": "merge",
+          "line": 45
+        },
+        {
+          "path": "/<int:identifier>/unmerge",
+          "methods": [
+            "POST"
+          ],
+          "function": "merge",
+          "line": 45
+        },
+        {
+          "path": "/mentions/<int:identifier>/correct",
+          "methods": [
+            "POST"
+          ],
+          "function": "correct",
+          "line": 54
+        },
+        {
+          "path": "/evidence/<int:identifier>/extract",
+          "methods": [
+            "POST"
+          ],
+          "function": "extract",
+          "line": 60
+        },
+        {
+          "path": "/mentions/create",
+          "methods": [
+            "POST"
+          ],
+          "function": "mention",
+          "line": 66
+        },
+        {
+          "path": "/relations",
+          "methods": [
+            "GET"
+          ],
+          "function": "relations",
+          "line": 75
+        },
+        {
+          "path": "/relations/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "relation",
+          "line": 81
+        },
+        {
+          "path": "/relations/new/<int:workspace_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "new_relation",
+          "line": 94
+        },
+        {
+          "path": "/relations/new/<int:workspace_id>",
+          "methods": [
+            "POST"
+          ],
+          "function": "add_relation",
+          "line": 99
+        },
+        {
+          "path": "/relations/<int:identifier>/update",
+          "methods": [
+            "POST"
+          ],
+          "function": "update_relation",
+          "line": 104
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/entity_schema.py",
+      "sha256": "76f08604c5b81aedd02065ebddf6806c0f432864cfec1fa46b706ef8a0a2912c",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/evidence.py",
+      "sha256": "7c2d50336d1ca9918fea670b7b1d7a6cef8f42f2b60f9a1d258f08f3e894bce3",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/evidence_api.py",
+      "sha256": "94116dd3467da57e6bc0260b407997fefe1e746fc56e7a94a2752ba577d6bbb0",
+      "routes": [
+        {
+          "path": "/evidence",
+          "methods": [
+            "GET"
+          ],
+          "function": "listing",
+          "line": 35
+        },
+        {
+          "path": "/evidence/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 43
+        },
+        {
+          "path": "/evidence/<int:identifier>/download",
+          "methods": [
+            "GET"
+          ],
+          "function": "download",
+          "line": 51
+        },
+        {
+          "path": "/articles/<int:identifier>/evidence",
+          "methods": [
+            "POST"
+          ],
+          "function": "capture",
+          "line": 59
+        },
+        {
+          "path": "/workspaces/<int:identifier>/attachments",
+          "methods": [
+            "POST"
+          ],
+          "function": "attachment",
+          "line": 66
+        },
+        {
+          "path": "/workspaces/<int:identifier>/quotations",
+          "methods": [
+            "GET"
+          ],
+          "function": "quotations",
+          "line": 84
+        },
+        {
+          "path": "/workspaces/<int:identifier>/quotations",
+          "methods": [
+            "POST"
+          ],
+          "function": "quote",
+          "line": 90
+        },
+        {
+          "path": "/evidence-settings",
+          "methods": [
+            "GET"
+          ],
+          "function": "settings",
+          "line": 96
+        },
+        {
+          "path": "/evidence-settings",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_settings",
+          "line": 104
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/evidence_backup.py",
+      "sha256": "e3e4650bc8efd737e81dfe4a2efd7e79046f96ab5298efe998bf96ff4a6767ff",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/evidence_ui.py",
+      "sha256": "7b3972ee23a07736349793eb42b082cc12bf7354b10b79d6b50db17cac50f110",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 12
+        },
+        {
+          "path": "/<int:eid>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 27
+        },
+        {
+          "path": "/<int:identifier>/download",
+          "methods": [
+            "GET"
+          ],
+          "function": "download_ui",
+          "line": 35
+        },
+        {
+          "path": "/articles/<int:aid>/capture",
+          "methods": [
+            "POST"
+          ],
+          "function": "capture",
+          "line": 39
+        },
+        {
+          "path": "/<int:eid>/pin/<kind>",
+          "methods": [
+            "POST"
+          ],
+          "function": "pin",
+          "line": 45
+        },
+        {
+          "path": "/workspaces/<int:wid>/attachments",
+          "methods": [
+            "POST"
+          ],
+          "function": "attachment",
+          "line": 52
+        },
+        {
+          "path": "/<int:eid>/quote",
+          "methods": [
+            "POST"
+          ],
+          "function": "quote",
+          "line": 64
+        },
+        {
+          "path": "/settings",
+          "methods": [
+            "POST"
+          ],
+          "function": "settings",
+          "line": 71
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/fetch.py",
+      "sha256": "5f9d481b23b10858f16c44d7407cdbbe71dde7ae880e3afeb9c256e892d4f257",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/folders.py",
+      "sha256": "786de96ab16498516000fbd2d0790a48962bd461a799940cd5ae80cdf4d045a9",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/identifiers.py",
+      "sha256": "1b779c65cc53a7610fc4f896f5b1428c2a96762d743629d36d78287e836e3dfe",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/import_preview.py",
+      "sha256": "7c6774205730f2d6d547f2aad01495d3ebd012332b1426f67d1fd29938442101",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/keys.py",
+      "sha256": "499ffdcc2fe928e629b520bc1f5c5b07ae4e716ae46cb407d808f8bc6027a3f0",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/library_sync.py",
+      "sha256": "ff8919aef1cf16949b64a1d8ea38d99490b8d28961b9feee2cf896d01ea95436",
+      "routes": [
+        {
+          "path": "/exchange",
+          "methods": [
+            "POST"
+          ],
+          "function": "exchange",
+          "line": 180
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/maintenance.py",
+      "sha256": "ee8db4f7b93b9debf71ad56fa7a6cf81d3eda86262ede21e0a7e53b497fa7c34",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/navigation.py",
+      "sha256": "f85440153471245d3b0754c495438058e9776fbbaf82ec103d2a952619c641d6",
+      "routes": [
+        {
+          "path": "/<area>",
+          "methods": [
+            "GET"
+          ],
+          "function": "hub",
+          "line": 94
+        },
+        {
+          "path": "/tags",
+          "methods": [
+            "GET"
+          ],
+          "function": "tags",
+          "line": 116
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/network_adapters.py",
+      "sha256": "75741c5ae6bbd272afaaf97d6f27f2d46ef1c9e806efa789a2ebc7b60ea8dfc7",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/network_api.py",
+      "sha256": "f714b21abe2d463c859b072b37083c4a1ce8c9cbe50a2bb4182894e32c06a783",
+      "routes": [
+        {
+          "path": "/workspaces/<int:identifier>/network-watches",
+          "methods": [
+            "GET"
+          ],
+          "function": "watches",
+          "line": 16
+        },
+        {
+          "path": "/workspaces/<int:identifier>/network-watches",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 21
+        },
+        {
+          "path": "/network-watches/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 26
+        },
+        {
+          "path": "/network-watches/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update",
+          "line": 30
+        },
+        {
+          "path": "/network-watches/<int:identifier>/lookup",
+          "methods": [
+            "POST"
+          ],
+          "function": "lookup",
+          "line": 35
+        },
+        {
+          "path": "/network-watches/<int:identifier>/observations",
+          "methods": [
+            "GET"
+          ],
+          "function": "observations",
+          "line": 42
+        },
+        {
+          "path": "/network-watches/<int:identifier>/events",
+          "methods": [
+            "GET"
+          ],
+          "function": "events",
+          "line": 47
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/network_intelligence.py",
+      "sha256": "df1550d64eb7fef52b1eca5256c0eb780205679f92bc8efa0b1ba76f086d0374",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/network_schema.py",
+      "sha256": "bdacae4cfd810862833e5410b7eaff5e0a6ce258f85deaf9cbc1095c5593ccb4",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/network_ui.py",
+      "sha256": "a88ab345b45bd5a3300a0b226ede138826a83dc1f198d1492f4dc74f2bffd2ed",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 9
+        },
+        {
+          "path": "/watches",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 17
+        },
+        {
+          "path": "/watches/<int:watch_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 26
+        },
+        {
+          "path": "/watches/<int:watch_id>/lookup",
+          "methods": [
+            "POST"
+          ],
+          "function": "lookup",
+          "line": 33
+        },
+        {
+          "path": "/watches/<int:watch_id>/update",
+          "methods": [
+            "POST"
+          ],
+          "function": "update",
+          "line": 39
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/observation.py",
+      "sha256": "0a23f43eb1bda3f86354c1866b2c18dd810997aa0bcb88e4bc2eacbce2a20ab9",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/openrouter_http.py",
+      "sha256": "beed875491365771ea78843842afc0752fb865f175df2b72c6f8270eb10b37a8",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/operations.py",
+      "sha256": "67d5615b25cfa288826bf735dba2a5a352bd2905eb82371f0f853257a6fe28ff",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/operations_api.py",
+      "sha256": "324e2202e30fd6276a20d43845041d3c8411fedd14660c7031e216f390d0746e",
+      "routes": [
+        {
+          "path": "/workspaces/<int:identifier>/reports",
+          "methods": [
+            "POST"
+          ],
+          "function": "report_create",
+          "line": 12
+        },
+        {
+          "path": "/reports/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "report",
+          "line": 17
+        },
+        {
+          "path": "/reports/<int:identifier>/download",
+          "methods": [
+            "GET"
+          ],
+          "function": "download",
+          "line": 21
+        },
+        {
+          "path": "/workspaces/<int:identifier>/reports",
+          "methods": [
+            "GET"
+          ],
+          "function": "report_list",
+          "line": 27
+        },
+        {
+          "path": "/delivery-profiles",
+          "methods": [
+            "GET"
+          ],
+          "function": "profiles",
+          "line": 32
+        },
+        {
+          "path": "/delivery-profiles",
+          "methods": [
+            "POST"
+          ],
+          "function": "profile_create",
+          "line": 35
+        },
+        {
+          "path": "/delivery-profiles/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "profile_update",
+          "line": 40
+        },
+        {
+          "path": "/reports/<int:identifier>/delivery-previews",
+          "methods": [
+            "POST"
+          ],
+          "function": "preview_create",
+          "line": 45
+        },
+        {
+          "path": "/delivery-previews/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "preview",
+          "line": 50
+        },
+        {
+          "path": "/delivery-previews/<int:identifier>/jobs",
+          "methods": [
+            "POST"
+          ],
+          "function": "job_create",
+          "line": 54
+        },
+        {
+          "path": "/delivery-jobs",
+          "methods": [
+            "GET"
+          ],
+          "function": "jobs",
+          "line": 59
+        },
+        {
+          "path": "/delivery-jobs/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "job",
+          "line": 62
+        },
+        {
+          "path": "/operations",
+          "methods": [
+            "GET"
+          ],
+          "function": "health",
+          "line": 68
+        },
+        {
+          "path": "/operations/worker-runs",
+          "methods": [
+            "GET"
+          ],
+          "function": "runs",
+          "line": 71
+        },
+        {
+          "path": "/operations/config",
+          "methods": [
+            "GET"
+          ],
+          "function": "configuration",
+          "line": 74
+        },
+        {
+          "path": "/operations/config",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "configure",
+          "line": 77
+        },
+        {
+          "path": "/operations/backups",
+          "methods": [
+            "GET"
+          ],
+          "function": "backups",
+          "line": 82
+        },
+        {
+          "path": "/operations/backups",
+          "methods": [
+            "POST"
+          ],
+          "function": "enqueue_backup",
+          "line": 85
+        },
+        {
+          "path": "/settings",
+          "methods": [
+            "GET"
+          ],
+          "function": "settings_get",
+          "line": 91
+        },
+        {
+          "path": "/settings",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "settings_patch",
+          "line": 94
+        },
+        {
+          "path": "/articles/bulk-state",
+          "methods": [
+            "POST"
+          ],
+          "function": "bulk",
+          "line": 104
+        },
+        {
+          "path": "/opml",
+          "methods": [
+            "GET"
+          ],
+          "function": "opml_export",
+          "line": 110
+        },
+        {
+          "path": "/opml",
+          "methods": [
+            "POST"
+          ],
+          "function": "opml_import",
+          "line": 113
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/operations_schema.py",
+      "sha256": "751893954df9bf99c713b3b446f74d0f540755b45d1e0ed639c7a1257f444a85",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/operations_ui.py",
+      "sha256": "8de38150f36cfc487a34340221a6fecfa8cba58ae1cf7308ebb9bfcb4e3af5a4",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 11
+        },
+        {
+          "path": "/reports",
+          "methods": [
+            "GET"
+          ],
+          "function": "reports_page",
+          "line": 18
+        },
+        {
+          "path": "/reports",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_report",
+          "line": 26
+        },
+        {
+          "path": "/reports/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "report",
+          "line": 34
+        },
+        {
+          "path": "/reports/<int:identifier>/download",
+          "methods": [
+            "GET"
+          ],
+          "function": "download",
+          "line": 39
+        },
+        {
+          "path": "/profiles",
+          "methods": [
+            "POST"
+          ],
+          "function": "profile",
+          "line": 44
+        },
+        {
+          "path": "/profiles/<int:identifier>",
+          "methods": [
+            "POST"
+          ],
+          "function": "profile_update",
+          "line": 50
+        },
+        {
+          "path": "/reports/<int:identifier>/preview",
+          "methods": [
+            "POST"
+          ],
+          "function": "preview_create",
+          "line": 57
+        },
+        {
+          "path": "/previews/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "preview",
+          "line": 62
+        },
+        {
+          "path": "/previews/<int:identifier>/approve",
+          "methods": [
+            "POST"
+          ],
+          "function": "approve",
+          "line": 67
+        },
+        {
+          "path": "/backups",
+          "methods": [
+            "POST"
+          ],
+          "function": "backup",
+          "line": 72
+        },
+        {
+          "path": "/config",
+          "methods": [
+            "POST"
+          ],
+          "function": "configure",
+          "line": 78
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/opml.py",
+      "sha256": "690669e35bc489e673d49e4670ad9ae983925f0f377171b37c4c3df66b1e60da",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/page_broker.py",
+      "sha256": "7f634aa3c80fc68425445eaf0a3129b39b451b8d87fe65b07fb8142228b5e264",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/page_protocol.py",
+      "sha256": "577a7e257159e2037abc178d7de72aed4916ebef63acc08920b8b651bd1acb6c",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/platform_schema.py",
+      "sha256": "a9b07d887d246b3cd71f2be2f39c013153d6bfb4cd0b27f8d9b3b5cfdf836245",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/preferences.py",
+      "sha256": "70f257e29da6c60f90e47ca423a2c20ddd14f1e400d9972d340c50d8bdb13d23",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/presentation.py",
+      "sha256": "9ec22999cc6005a3230515c1ea11be1e9a6bfdf9c4bde3de3ab56d06f7d8924d",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/reader_navigation.py",
+      "sha256": "55ba4129837630adabdeb49f8620bbdb7153b2228b4448f1c1ca60f0f1c0a44f",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/reader_order.py",
+      "sha256": "e64e34b2e770d2c7802442a249deca404804a9fa308052fd4bd0c48059adce79",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/reader_search.py",
+      "sha256": "7b0ab2d792d1e2f88fa60d14b55d20f3dfb171f51ff366c5b86bdcd7fdcc576e",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/reader_state.py",
+      "sha256": "d254e5eb8f66a60340ba4c1b778945a64fd49ce0a4dd04debb22cafcd87d833f",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/reader_stream.py",
+      "sha256": "4f86af7278422badc33db8b988af7e49c5fd0d2a97ed1836c34ea83cd000a6fe",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/renderer.py",
+      "sha256": "76dc1769fc13781dbff527b0aaf876e2d32ef02213c32ad774851607e9c7fc9e",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/reports.py",
+      "sha256": "159373dc506a2999d93c66c93df5b8663550f4c674d6563bd0886cca153a976d",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/research.py",
+      "sha256": "e0d7bd4ffd1643f3059978d6e580ead24a44621dd44a7dbd0ff63fda7fc228a4",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/research_api.py",
+      "sha256": "970bc862e04cb887773e982ddb6f84c298d09987651d3ca096a4182448335029",
+      "routes": [
+        {
+          "path": "/workspaces",
+          "methods": [
+            "GET"
+          ],
+          "function": "workspaces",
+          "line": 68
+        },
+        {
+          "path": "/workspaces",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_workspace",
+          "line": 76
+        },
+        {
+          "path": "/workspaces/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "workspace",
+          "line": 83
+        },
+        {
+          "path": "/workspaces/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_workspace",
+          "line": 90
+        },
+        {
+          "path": "/workspaces/<int:identifier>/articles",
+          "methods": [
+            "GET"
+          ],
+          "function": "workspace_articles",
+          "line": 97
+        },
+        {
+          "path": "/workspaces/<int:identifier>/feeds",
+          "methods": [
+            "GET"
+          ],
+          "function": "workspace_feeds",
+          "line": 102
+        },
+        {
+          "path": "/workspaces/<int:identifier>/notes",
+          "methods": [
+            "GET"
+          ],
+          "function": "notes",
+          "line": 109
+        },
+        {
+          "path": "/workspaces/<int:identifier>/notes",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_note",
+          "line": 119
+        },
+        {
+          "path": "/notes/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "note",
+          "line": 126
+        },
+        {
+          "path": "/notes/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_note",
+          "line": 133
+        },
+        {
+          "path": "/notes/<int:identifier>/revisions",
+          "methods": [
+            "GET"
+          ],
+          "function": "revisions",
+          "line": 140
+        },
+        {
+          "path": "/tags",
+          "methods": [
+            "GET"
+          ],
+          "function": "tags",
+          "line": 147
+        },
+        {
+          "path": "/tags",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_tag",
+          "line": 152
+        },
+        {
+          "path": "/tags/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "tag",
+          "line": 159
+        },
+        {
+          "path": "/tags/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update_tag",
+          "line": 166
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/research_ui.py",
+      "sha256": "bc22e6e8d9e6af9399b4e76fbd7b289223064f6ba6eb613cc52d352a47b9340c",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 44
+        },
+        {
+          "path": "",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 68
+        },
+        {
+          "path": "/<int:workspace_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 76
+        },
+        {
+          "path": "/<int:workspace_id>/edit",
+          "methods": [
+            "POST"
+          ],
+          "function": "edit",
+          "line": 106
+        },
+        {
+          "path": "/<int:workspace_id>/archive",
+          "methods": [
+            "POST"
+          ],
+          "function": "archive",
+          "line": 115
+        },
+        {
+          "path": "/<int:workspace_id>/links/<kind>",
+          "methods": [
+            "POST"
+          ],
+          "function": "link",
+          "line": 126
+        },
+        {
+          "path": "/article/<int:article_id>/link",
+          "methods": [
+            "POST"
+          ],
+          "function": "article_link",
+          "line": 135
+        },
+        {
+          "path": "/tags",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_tag",
+          "line": 143
+        },
+        {
+          "path": "/tags/<int:tag_id>",
+          "methods": [
+            "POST"
+          ],
+          "function": "edit_tag",
+          "line": 151
+        },
+        {
+          "path": "/tags/<kind>/<int:target_id>",
+          "methods": [
+            "POST"
+          ],
+          "function": "tag_link",
+          "line": 158
+        },
+        {
+          "path": "/<int:workspace_id>/notes",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_note",
+          "line": 167
+        },
+        {
+          "path": "/notes/<int:note_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "note",
+          "line": 184
+        },
+        {
+          "path": "/notes/<int:note_id>",
+          "methods": [
+            "POST"
+          ],
+          "function": "edit_note",
+          "line": 189
+        },
+        {
+          "path": "/notes/<int:note_id>/archive",
+          "methods": [
+            "POST"
+          ],
+          "function": "archive_note",
+          "line": 205
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/security_adapters.py",
+      "sha256": "56f4dcc5df963a23e4186864c23cfb1f442c3ddff919c71a15c6901338cf9b7a",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/security_api.py",
+      "sha256": "d4e42b70437918d7034620e2d957fdf8c5fbfd53a0b8d1f2276b41dd522b326f",
+      "routes": [
+        {
+          "path": "/connectors",
+          "methods": [
+            "GET"
+          ],
+          "function": "providers",
+          "line": 12
+        },
+        {
+          "path": "/connectors/<provider>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "configure",
+          "line": 17
+        },
+        {
+          "path": "/connector-jobs",
+          "methods": [
+            "GET"
+          ],
+          "function": "jobs",
+          "line": 22
+        },
+        {
+          "path": "/connectors/<provider>/jobs",
+          "methods": [
+            "POST"
+          ],
+          "function": "enqueue",
+          "line": 30
+        },
+        {
+          "path": "/connector-jobs/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "job",
+          "line": 35
+        },
+        {
+          "path": "/workspaces/<int:identifier>/security-watches",
+          "methods": [
+            "GET"
+          ],
+          "function": "watches",
+          "line": 43
+        },
+        {
+          "path": "/workspaces/<int:identifier>/security-watches",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 48
+        },
+        {
+          "path": "/security-watches/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 53
+        },
+        {
+          "path": "/security-watches/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update",
+          "line": 57
+        },
+        {
+          "path": "/security-watches/<int:identifier>/reviews",
+          "methods": [
+            "POST"
+          ],
+          "function": "review",
+          "line": 62
+        },
+        {
+          "path": "/security-watches/<int:identifier>/reviews",
+          "methods": [
+            "GET"
+          ],
+          "function": "reviews",
+          "line": 67
+        },
+        {
+          "path": "/entities/<int:identifier>/security-observations",
+          "methods": [
+            "GET"
+          ],
+          "function": "observations",
+          "line": 72
+        },
+        {
+          "path": "/entities/<int:identifier>/vulnerability",
+          "methods": [
+            "GET"
+          ],
+          "function": "vulnerability",
+          "line": 80
+        },
+        {
+          "path": "/workspaces/<int:identifier>/security-references",
+          "methods": [
+            "POST"
+          ],
+          "function": "reference",
+          "line": 84
+        },
+        {
+          "path": "/workspaces/<int:identifier>/security-references",
+          "methods": [
+            "GET"
+          ],
+          "function": "references",
+          "line": 89
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/security_intelligence.py",
+      "sha256": "71fc9dae50f0bd856fab73ba0799359e51a29103622734bb1e0eb740b27a9213",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/security_ui.py",
+      "sha256": "926d802fa205141541e38916108d66594ca05e330de7e6d0d0cfded739a04b49",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 10
+        },
+        {
+          "path": "/connectors/<provider>",
+          "methods": [
+            "POST"
+          ],
+          "function": "configure",
+          "line": 20
+        },
+        {
+          "path": "/watches",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 25
+        },
+        {
+          "path": "/watches/<int:watch_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 30
+        },
+        {
+          "path": "/watches/<int:watch_id>/update",
+          "methods": [
+            "POST"
+          ],
+          "function": "update",
+          "line": 37
+        },
+        {
+          "path": "/watches/<int:watch_id>/review",
+          "methods": [
+            "POST"
+          ],
+          "function": "review",
+          "line": 45
+        },
+        {
+          "path": "/watches/<int:watch_id>/reference",
+          "methods": [
+            "POST"
+          ],
+          "function": "reference",
+          "line": 50
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/settings.py",
+      "sha256": "fe99cb31a7e50be5425adf93cf8586c7d87bf279680a6dcac06cc03a16941434",
+      "routes": [
+        {
+          "path": "/settings",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 32
+        },
+        {
+          "path": "/settings",
+          "methods": [
+            "POST"
+          ],
+          "function": "save",
+          "line": 44
+        },
+        {
+          "path": "/settings/feeds/<int:feed_id>",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_feed",
+          "line": 54
+        },
+        {
+          "path": "/settings/keys",
+          "methods": [
+            "POST"
+          ],
+          "function": "create_key",
+          "line": 68
+        },
+        {
+          "path": "/settings/keys/<int:key_id>/revoke",
+          "methods": [
+            "POST"
+          ],
+          "function": "revoke_key",
+          "line": 79
+        },
+        {
+          "path": "/subscriptions.opml",
+          "methods": [
+            "GET"
+          ],
+          "function": "export",
+          "line": 90
+        },
+        {
+          "path": "/settings/opml",
+          "methods": [
+            "POST"
+          ],
+          "function": "import_file",
+          "line": 95
+        },
+        {
+          "path": "/settings/opml/confirm",
+          "methods": [
+            "POST"
+          ],
+          "function": "confirm_import",
+          "line": 107
+        },
+        {
+          "path": "/settings/social",
+          "methods": [
+            "POST"
+          ],
+          "function": "subscribe_social",
+          "line": 120
+        },
+        {
+          "path": "/settings/pages",
+          "methods": [
+            "POST"
+          ],
+          "function": "subscribe_page",
+          "line": 132
+        },
+        {
+          "path": "/settings/pages/<int:feed_id>",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_page",
+          "line": 144
+        },
+        {
+          "path": "/settings/feeds/<int:feed_id>/url",
+          "methods": [
+            "POST"
+          ],
+          "function": "repair_url",
+          "line": 156
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/settings_pages.py",
+      "sha256": "3cc6bc292ddd16e2ad50f7cb72ca8ade1b5011aa0874f9b3b85ac156450d1dcc",
+      "routes": [
+        {
+          "path": "/settings/<section>",
+          "methods": [
+            "GET"
+          ],
+          "function": "page",
+          "line": 88
+        },
+        {
+          "path": "/settings/items/<kind>/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "object_edit",
+          "line": 99
+        },
+        {
+          "path": "/sources/new/<kind>",
+          "methods": [
+            "GET"
+          ],
+          "function": "source",
+          "line": 132
+        },
+        {
+          "path": "/settings/openrouter",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_openrouter",
+          "line": 152
+        },
+        {
+          "path": "/settings/ai",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_openrouter",
+          "line": 152
+        },
+        {
+          "path": "/settings/folders",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_folder_order",
+          "line": 159
+        },
+        {
+          "path": "/folders/order",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_folder_order",
+          "line": 159
+        },
+        {
+          "path": "/settings/appearance",
+          "methods": [
+            "POST"
+          ],
+          "function": "save_appearance",
+          "line": 182
+        },
+        {
+          "path": "/folders/rename",
+          "methods": [
+            "POST"
+          ],
+          "function": "rename_folder",
+          "line": 201
+        },
+        {
+          "path": "/feeds/<int:feed_id>/subscription",
+          "methods": [
+            "GET",
+            "POST"
+          ],
+          "function": "subscription",
+          "line": 217
+        },
+        {
+          "path": "/feeds/<int:feed_id>/order",
+          "methods": [
+            "POST"
+          ],
+          "function": "feed_order",
+          "line": 239
+        },
+        {
+          "path": "/settings/export",
+          "methods": [
+            "POST"
+          ],
+          "function": "export_configuration",
+          "line": 255
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/social.py",
+      "sha256": "a10a03e536d9d723bfc9323246b0c1218d2039d768ad4142f8286ef7142cabef",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/social_ai.py",
+      "sha256": "a403897298ebec77e6ab934e4c821d0d710a116818b86622de039ed7b2bfba55",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/social_ai_schema.py",
+      "sha256": "c28659306800089c3cdb9adb7e55f98d5bf0539d15487dd1c065d4cf042bec13",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/social_http.py",
+      "sha256": "4454a595798310752a7999f5dbbace378f95225fa2f7ee24be6c0beabb717349",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/social_research.py",
+      "sha256": "a3b8cf83c04542d83dee78047171d6e14e3048fc10f1186bf8befe083c5685be",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/social_schema.py",
+      "sha256": "ffa83d33f459ee110dee440cacca3ea5c95e07abedfd005a871a089d47bb16ee",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/social_ui.py",
+      "sha256": "5394f0a5a836fee4d7cdbdbe00e49cdaad85d5361ba86dbb5b7def4606fc73f0",
+      "routes": [
+        {
+          "path": "",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 16
+        },
+        {
+          "path": "/<int:feed_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 25
+        },
+        {
+          "path": "/ai/config",
+          "methods": [
+            "POST"
+          ],
+          "function": "ai_configure",
+          "line": 34
+        },
+        {
+          "path": "/<int:feed_id>/ai/settings",
+          "methods": [
+            "POST"
+          ],
+          "function": "ai_topic_configure",
+          "line": 52
+        },
+        {
+          "path": "/<int:feed_id>/ai/jobs",
+          "methods": [
+            "POST"
+          ],
+          "function": "ai_enqueue",
+          "line": 65
+        },
+        {
+          "path": "",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 77
+        },
+        {
+          "path": "/<int:feed_id>/settings",
+          "methods": [
+            "POST"
+          ],
+          "function": "configure",
+          "line": 91
+        },
+        {
+          "path": "/<int:feed_id>/refresh",
+          "methods": [
+            "POST"
+          ],
+          "function": "refresh",
+          "line": 106
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/subscriptions.py",
+      "sha256": "57a62bd74b7972ac46b4b9713bb4fa93adb3a966560a9b037798145c35cd2b6b",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/triage.py",
+      "sha256": "ed13ec4d3be7b6ed1a1fe68b2c41dd03f4ec3a2c336d3069f180f7153cbf7414",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/triage_api.py",
+      "sha256": "0d0152ad9fd98c7ea3b18891a3484ecf995981ec06cb9445778f2144cfc3bc1e",
+      "routes": [
+        {
+          "path": "/workspaces/<int:identifier>/watchlists",
+          "methods": [
+            "GET"
+          ],
+          "function": "lists",
+          "line": 12
+        },
+        {
+          "path": "/workspaces/<int:identifier>/watchlists",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 17
+        },
+        {
+          "path": "/watchlists/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 22
+        },
+        {
+          "path": "/watchlists/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "update",
+          "line": 26
+        },
+        {
+          "path": "/watchlists/<int:identifier>/revisions",
+          "methods": [
+            "GET"
+          ],
+          "function": "versions",
+          "line": 31
+        },
+        {
+          "path": "/watchlists/<int:identifier>/preview",
+          "methods": [
+            "GET"
+          ],
+          "function": "preview",
+          "line": 36
+        },
+        {
+          "path": "/watchlists/<int:identifier>/process",
+          "methods": [
+            "POST"
+          ],
+          "function": "process",
+          "line": 40
+        },
+        {
+          "path": "/watchlists/<int:identifier>/reprocess",
+          "methods": [
+            "POST"
+          ],
+          "function": "reprocess",
+          "line": 45
+        },
+        {
+          "path": "/workspaces/<int:identifier>/watch-events",
+          "methods": [
+            "GET"
+          ],
+          "function": "events",
+          "line": 51
+        },
+        {
+          "path": "/workspaces/<int:identifier>/digest",
+          "methods": [
+            "GET"
+          ],
+          "function": "events",
+          "line": 51
+        },
+        {
+          "path": "/watch-events/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "seen",
+          "line": 64
+        },
+        {
+          "path": "/duplicate-groups",
+          "methods": [
+            "GET"
+          ],
+          "function": "groups",
+          "line": 77
+        },
+        {
+          "path": "/duplicate-groups/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "group",
+          "line": 83
+        },
+        {
+          "path": "/duplicate-groups/<int:identifier>/members",
+          "methods": [
+            "GET"
+          ],
+          "function": "members",
+          "line": 88
+        },
+        {
+          "path": "/duplicate-groups/<int:identifier>",
+          "methods": [
+            "PATCH"
+          ],
+          "function": "toggle",
+          "line": 93
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/triage_schema.py",
+      "sha256": "0c61887f0c21e2a9b63f5fc4909c1f6fa69f2c0ce3535d32cd9490ea6aa9a71a",
+      "routes": []
+    },
+    {
+      "path": "feedastrolabe/triage_ui.py",
+      "sha256": "1e59ea6a0c1210dc18b5be24ce28af1661ccde987fbface571aece2f1fcdb0c5",
+      "routes": [
+        {
+          "path": "/<int:workspace_id>",
+          "methods": [
+            "GET"
+          ],
+          "function": "index",
+          "line": 10
+        },
+        {
+          "path": "/<int:workspace_id>/create",
+          "methods": [
+            "POST"
+          ],
+          "function": "create",
+          "line": 28
+        },
+        {
+          "path": "/watchlists/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "detail",
+          "line": 34
+        },
+        {
+          "path": "/watchlists/<int:identifier>/update",
+          "methods": [
+            "POST"
+          ],
+          "function": "update",
+          "line": 40
+        },
+        {
+          "path": "/watchlists/<int:identifier>/process",
+          "methods": [
+            "POST"
+          ],
+          "function": "process",
+          "line": 51
+        },
+        {
+          "path": "/watchlists/<int:identifier>/reprocess",
+          "methods": [
+            "POST"
+          ],
+          "function": "reprocess",
+          "line": 57
+        },
+        {
+          "path": "/events/<int:identifier>/seen",
+          "methods": [
+            "POST"
+          ],
+          "function": "seen",
+          "line": 63
+        },
+        {
+          "path": "/groups",
+          "methods": [
+            "GET"
+          ],
+          "function": "groups",
+          "line": 75
+        },
+        {
+          "path": "/groups/<int:identifier>",
+          "methods": [
+            "GET"
+          ],
+          "function": "group",
+          "line": 82
+        },
+        {
+          "path": "/groups/<int:identifier>/toggle",
+          "methods": [
+            "POST"
+          ],
+          "function": "toggle",
+          "line": 88
+        }
+      ]
+    },
+    {
+      "path": "feedastrolabe/xml_safety.py",
+      "sha256": "415475797571b3ef42b29c8679da14d1003957c8e039d388e6ab7957075350b4",
+      "routes": []
+    }
+  ]
+}

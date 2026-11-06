@@ -1,0 +1,12 @@
+## Context
+Feeder lists articles with bounded offset/limit and basic source/search filters. Actual detail visits are not yet recorded.
+## Goals / Non-Goals
+Goals: durable shared history; deterministic new/old/recent ordering; literal q, CSV any/exclusion phrases, scope and UTC calendar dates, multiple feeds; atomic scoped bulk states; current-filter-wide read including undrawn items.
+Non-goals: legacy API exact compatibility, signed continuation, display timezone settings, JS-disabled UI, research/tag filters not yet implemented.
+## Decisions
+Add a separate article_visits table with cascading article identity and latest visit timestamp. POST /api/articles/{id}/visit marks read and records a visit atomically; GET/state/bulk never create visits. Repeated actual visits reorder history. UI records a visit for every opened detail, including already-read articles.
+Share one validated filter builder for listing and bulk scope. Filters retain existing q/unread/starred/feed_id/folder_id and add history, order=new|old|recent, scope=both|title|body, any/exclude CSV phrases, published_from/published_to UTC dates, feed_ids comma-separated integers. Apply literal matching with bounded phrase counts/lengths and AND between groups; OR within any. Reject invalid/reversed dates, nonexistent source IDs, unsupported orders/scopes and excessive input before writes. Date filters exclude missing publication dates. Always tie-break by ID. Offset/limit remains the internal incremental transport; do not present page numbers or a user-visible cap.
+POST /api/articles/read-all {filters} updates the complete matching scope and returns {updated}; ignore no filter silently. POST /api/articles/bulk-state {ids,read?,starred?,filters} validates every unique ID (max100), existence and scope before one transaction. UI selection survives appended lists/detail in the same scope and resets on filter changes. Named filters correspond to validated complete active scope and are sent unchanged for mutations.
+Back up recognized v3 before v4 migration. Reuse Origin/Host checks, explicit JSON, plain text and Linux Web/worker lifecycle. Keep list loading/race guards and surfaced errors; no history effects from middle-click original access.
+## Risks / Trade-offs
+History order can move when a visit is recorded; UI retains the current detail and reconciles lists deliberately. Dates initially use UTC until display timezone is migrated. Offset pagination is not snapshot isolation under concurrent inserts; do not claim signed cursor parity.

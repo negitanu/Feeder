@@ -1,0 +1,34 @@
+# Build and dependencies
+/target/
+node_modules/
+dist/
+build/
+coverage/
+.playwright/
+playwright-report/
+test-results/
+# Secrets, databases, exports and runtime data
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite*
+*.db
+*.db-*
+instance/
+data/
+backups/
+exports/
+*.log
+.DS_Store
+# Rust crate-local outputs
+**/target/
+
+*.tsbuildinfo
+
+__pycache__/
+*.pyc

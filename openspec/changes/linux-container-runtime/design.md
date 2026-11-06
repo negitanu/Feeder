@@ -1,0 +1,11 @@
+## Context
+Feeder currently builds Rust and React locally and runs a separate worker. Container binding to 0.0.0.0 requires explicit trusted HTTP Host values; forwarded headers must not bypass existing Origin checks.
+## Goals / Non-Goals
+Goals: runnable Linux image with no Rust/Node build tools in runtime, persistent SQLite shared by Web/worker, isolation and health, graceful stop and restart persistence.
+Non-goals: native macOS/Windows applications, external exposure before authentication, legacy renderer migration, changes to the old running environment.
+## Decisions
+Use official Linux Node and Rust build stages and a minimal Debian runtime with CA roots and an HTTP health probe. Compile with Cargo.lock and npm lockfile. Serve React assets from Rust. Run UID/GID10001 with a pre-owned /data volume. Compose Web/worker share named data volume, read_only, cap_drop ALL, no-new-privileges and bounded tmpfs. Web is bound to 0.0.0.0:8080 inside container but published only at host127.0.0.1 by default; worker starts after Web health. Demo data remains opt-in.
+Validate FEEDER_ALLOWED_HOSTS as an explicit list of authorities, combine with same-authority Origin validation and never trust arbitrary forwarded headers. Include health loopback and internal service authority in documented defaults. Unsupported configuration fails startup. Graceful Web shutdown stops accepting requests and drains bounded work; worker stops starting new jobs and finishes the current bounded operation before exiting. SQLite connection busy timeout prevents transient contention across processes. Host paths, secrets, generated builds, databases and caches are excluded from Docker context via allowlist.
+Use a unique Compose project/volume for verification. Never run down -v on user data. Optional tunnel/renderer services will be introduced after their security and API contracts are migrated, not as nonfunctional placeholders.
+## Risks / Trade-offs
+A host-local publication is not remote authentication. A public tunnel requires later authentication work. Native build architecture can be Linux amd64 or arm64, while all verification is inside Linux containers. Build network restrictions may require explicit escalation and must be reported honestly. Image tags and package compatibility are verified through actual pulls/builds.
