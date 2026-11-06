@@ -56,6 +56,7 @@ function App() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [selected, setSelected] = useState<Article | null>(null)
+  const [detailSequence, setDetailSequence] = useState<Article[]>([])
   const [openingId, setOpeningId] = useState<number | null>(null)
   const [detailTop, setDetailTop] = useState(80)
   const [theme, setTheme] = useState<Theme>(() => { try { const t = localStorage.getItem('feeder-theme'); return t === 'light' || t === 'dark' ? t : 'system' } catch { return 'system' } })
@@ -71,6 +72,9 @@ function App() {
   const detailGeneration = useRef(0)
   const detailRef = useRef<HTMLElement>(null)
   const detailCloseRef = useRef<HTMLButtonElement>(null)
+  const detailPreviousRef = useRef<HTMLButtonElement>(null)
+  const detailNextRef = useRef<HTMLButtonElement>(null)
+  const navigationFocus = useRef<'previous' | 'next' | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const visitRemovals = useRef(new Set<number>())
   const sentinel = useRef<HTMLDivElement>(null)
@@ -142,10 +146,19 @@ function App() {
 
   function closeDetail(restoreFocus: boolean) {
     ++detailGeneration.current
+    navigationFocus.current = null
     if (!restoreFocus) returnFocus.current = null
-    setOpeningId(null); setSelected(null)
+    setOpeningId(null); setSelected(null); setDetailSequence([])
   }
   useEffect(() => { if (openingId !== null) detailCloseRef.current?.focus({ preventScroll: true }) }, [openingId])
+  useEffect(() => {
+    if (openingId !== null || !selected || !navigationFocus.current) return
+    const preferred = navigationFocus.current === 'next' ? detailNextRef.current : detailPreviousRef.current
+    const fallback = navigationFocus.current === 'next' ? detailPreviousRef.current : detailNextRef.current
+    navigationFocus.current = null
+    const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : detailCloseRef.current
+    target?.focus({ preventScroll: true })
+  }, [openingId, selected])
   useEffect(() => {
     if ((!selected && openingId === null) || page !== 'read') return
     const dismiss = (event: PointerEvent) => {
@@ -182,7 +195,8 @@ function App() {
     const currentGeneration = ++generation.current
     moreInFlight.current = null
     ++detailGeneration.current; returnFocus.current = null; visitRemovals.current.clear()
-    setLoading(true); setMoreLoading(false); setMoreError(null); setError(''); setOpeningId(null); setSelected(null)
+    navigationFocus.current = null
+    setLoading(true); setMoreLoading(false); setMoreError(null); setError(''); setOpeningId(null); setSelected(null); setDetailSequence([])
     try {
       const result = await request<ArticlePage>(`/api/articles?${params}`)
       if (currentGeneration !== generation.current) return
@@ -237,6 +251,7 @@ function App() {
       if (state.read !== undefined) void loadUnreadCount()
       if (filtersKeyRef.current !== key) return
       setSelected(current => current?.id === updated.id ? updated : current)
+      setDetailSequence(current => current.map(item => item.id === updated.id ? updated : item))
       const was = eligible(article), now = eligible(updated)
       if (now) visitRemovals.current.delete(updated.id)
       setItems(current => now ? ordered(current.some(item => item.id === updated.id) ? current.map(item => item.id === updated.id ? updated : item) : [...current,updated]) : current.filter(item => item.id !== updated.id))
@@ -244,17 +259,20 @@ function App() {
       if (!now) setSelectedIds(current => current.filter(id => id !== updated.id))
     } catch (e) { if (filtersKeyRef.current === key) setError((e as Error).message) }
   }
-  async function openArticle(article: Article) {
-    returnFocus.current = article.id
+  async function openArticle(article: Article, navigation?: 'previous' | 'next') {
+    if (navigation) navigationFocus.current = navigation
+    else { navigationFocus.current = null; setDetailSequence(items) }
+    if (!navigation) returnFocus.current = article.id
     const detailRun = ++detailGeneration.current; const listRun = generation.current
     const key = filtersKey; setError(''); setOpeningId(article.id)
     try {
       const full = await request<Article>(`/api/articles/${article.id}/visit`, { method: 'POST' })
       void loadUnreadCount()
       if (filtersKeyRef.current !== key || listRun !== generation.current) return
+      setDetailSequence(current => current.map(item => item.id === full.id ? full : item))
       setItems(current => !eligible(full) ? current.filter(item => item.id !== full.id) : ordered(current.map(item => item.id === full.id ? full : item)))
       if (eligible(article) && !eligible(full) && !visitRemovals.current.has(full.id)) { visitRemovals.current.add(full.id); setTotal(value => Math.max(0,value-1)); setSelectedIds(current => current.filter(id => id !== full.id)) }
-      if (detailRun === detailGeneration.current) { setSelected(full); setOpeningId(null) }
+      if (detailRun === detailGeneration.current) { returnFocus.current = full.id; setSelected(full); setOpeningId(null) }
     } catch (e) { if (detailRun === detailGeneration.current && filtersKeyRef.current === key && listRun === generation.current) { setOpeningId(null); setError((e as Error).message) } }
   }
   function submitSearch(e: React.FormEvent) { e.preventDefault(); setSearch(query) }
@@ -305,6 +323,7 @@ function App() {
     const d = new Date(normalized)
     return Number.isNaN(d.getTime()) ? '公開日不明' : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeZone: readerSettings?.display_timezone ?? 'UTC' }).format(d)
   }
+  const detailIndex = selected ? detailSequence.findIndex(item => item.id === selected.id) : -1
 
   return <div className="app-shell">
     <header className="topbar">
@@ -322,7 +341,7 @@ function App() {
         {page === 'read' && <>
         {(selected || openingId !== null) && <section ref={detailRef} className="article-detail" style={{ top: detailTop }} aria-label="記事の詳細" aria-busy={openingId !== null}>
           <div className="detail-toolbar"><button ref={detailCloseRef} className="back-button" onClick={() => closeDetail(true)}>← <span>一覧に戻る</span></button>{selected && openingId === null && <><button onClick={() => void updateState(selected, { read: !selected.is_read })}>{selected.is_read ? '未読にする' : '既読にする'}</button><button className={`icon-button star-button ${selected.is_starred ? 'is-starred' : ''}`} aria-label={selected.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={selected.is_starred} onClick={() => void updateState(selected, { starred: !selected.is_starred })}>{selected.is_starred ? '★' : '☆'}</button></>}</div>
-          {openingId !== null ? <div className="detail-loading" role="status">記事を読み込んでいます...</div> : selected && <>{error && <div className="error-message" role="alert">{error}</div>}<article className="article-body"><div className="article-meta"><span>{date(selected.published)}</span></div><h1>{originalUrl(selected.url) ? <a href={originalUrl(selected.url)!} target="_blank" rel="noopener noreferrer">{selected.title}</a> : selected.title}</h1><div className="article-text">{selected.content}</div></article></>}
+          {openingId !== null ? <div className="detail-loading" role="status">記事を読み込んでいます...</div> : selected && <>{error && <div className="error-message" role="alert">{error}</div>}<article className="article-body"><div className="article-meta"><span>{date(selected.published)}</span></div><h1>{originalUrl(selected.url) ? <a href={originalUrl(selected.url)!} target="_blank" rel="noopener noreferrer">{selected.title}</a> : selected.title}</h1><div className="article-text">{selected.content}</div></article>{detailIndex >= 0 && <nav className="detail-navigation" aria-label="記事の移動"><button ref={detailPreviousRef} type="button" disabled={detailIndex === 0} onClick={() => void openArticle(detailSequence[detailIndex - 1], 'previous')}>前の記事</button><span aria-live="polite">{detailIndex + 1} / {detailSequence.length}</span><button ref={detailNextRef} type="button" disabled={detailIndex >= detailSequence.length - 1} onClick={() => void openArticle(detailSequence[detailIndex + 1], 'next')}>次の記事</button></nav>}</>}
         </section>}
         <section>
           <section className="list-heading"><div><div className="eyebrow">YOUR READING SPACE</div><h1>{source ? (source.kind === 'feed' ? feeds.find(f => f.id === source.id)?.title : folders.find(f => f.id === source.id)?.name) || '記事' : filter === 'all' ? '記事' : filter === 'unread' ? '未読' : filter === 'recent' ? '最近読んだ記事' : 'スター付き'}</h1><p>{search ? `「${search}」の検索結果` : '保存した記事を、あなたのペースで。'}</p></div><span className="result-count">{total} 件</span></section>

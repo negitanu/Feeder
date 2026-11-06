@@ -1,0 +1,6 @@
+## Design
+
+- On selecting a card, capture the current loaded article order. Footer controls navigate that sequence, show the position and disable unavailable endpoints; they do not fetch additional list pages. Opening another card explicitly starts a new sequence. This makes navigation deterministic despite visits affecting read status or recent ordering.
+- Navigate through the existing CSRF-protected visit path so each displayed article is marked read and recorded exactly as when selected. Update retained cards, selection, unread counts and detail state without resetting the list. An article that leaves an unread or starred filter can still be revisited through this short-lived sequence.
+- While a navigation request is pending, prevent further footer activation and retain the existing generation-based stale-response and dismissal protection. Restore keyboard focus to the corresponding footer control when available, otherwise the other control or close button. Closing or changing scope clears the sequence.
+- Add generated-data browser tests for previous/next boundaries, read/history effects, retained loaded list and selection, keyboard focus, unread filtering, asynchronous failure and responsive layout. No database schema changes or external requests.
