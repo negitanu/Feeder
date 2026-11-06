@@ -135,7 +135,7 @@ struct Folder {
 }
 #[derive(Serialize)]
 pub(super) struct Feed {
-    id: i64,
+    pub(super) id: i64,
     url: String,
     title: String,
     folder_id: Option<i64>,
@@ -704,6 +704,21 @@ pub(super) async fn add_feed(
     input_url: &str,
     folder_id: Option<i64>,
 ) -> Result<Feed, StatusCode> {
+    add_feed_impl(db, input_url, folder_id, None).await
+}
+pub(super) async fn add_feed_in_folder(
+    db: Db,
+    input_url: &str,
+    folder: &str,
+) -> Result<Feed, StatusCode> {
+    add_feed_impl(db, input_url, None, Some(folder)).await
+}
+async fn add_feed_impl(
+    db: Db,
+    input_url: &str,
+    folder_id: Option<i64>,
+    folder_name: Option<&str>,
+) -> Result<Feed, StatusCode> {
     let url = normalized_url(input_url)?.to_string();
     {
         let db = db.lock().map_err(err)?;
@@ -730,6 +745,19 @@ pub(super) async fn add_feed(
     let mut db = db.lock().map_err(err)?;
     let tx = db.transaction().map_err(err)?;
     folder_exists(&tx, folder_id)?;
+    let folder_id = if let Some(name) = folder_name.filter(|name| !name.is_empty()) {
+        tx.execute(
+            "INSERT INTO folders(name) VALUES (?) ON CONFLICT(name) DO NOTHING",
+            [name],
+        )
+        .map_err(err)?;
+        Some(
+            tx.query_row("SELECT id FROM folders WHERE name=?", [name], |r| r.get(0))
+                .map_err(err)?,
+        )
+    } else {
+        folder_id
+    };
     tx.execute(
         "INSERT INTO feeds(url,title,folder_id,etag,modified) VALUES (?,?,?,?,?)",
         params![url, title, folder_id, result.etag, result.modified],
@@ -750,7 +778,7 @@ async fn refresh(
     }
     Ok(Json(refresh_feed(db, id, false).await?))
 }
-async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Feed, StatusCode> {
+pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Feed, StatusCode> {
     let owner = super::discovery::random()?;
     let (url, etag, modified) = {
         let mut db = db.lock().map_err(err)?;
@@ -1076,7 +1104,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db");
         let c = open_db(&path, false).unwrap();
-        c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','Z',1),(2,'https://b','A',1),(3,'https://c','C',NULL); DROP TRIGGER folder_order_insert; DROP TRIGGER feed_order_insert; DROP TRIGGER feed_order_move; DROP TABLE feed_order; DROP TABLE folder_order; DROP TABLE reader_settings; PRAGMA user_version=4;").unwrap();
+        c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','Z',1),(2,'https://b','A',1),(3,'https://c','C',NULL); DROP TRIGGER folder_order_insert; DROP TRIGGER feed_order_insert; DROP TRIGGER feed_order_move; DROP TABLE feed_order; DROP TABLE folder_order; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=4;").unwrap();
         drop(c);
         let c = open_db(&path, false).unwrap();
         let order = snapshot(&c).unwrap();

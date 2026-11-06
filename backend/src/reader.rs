@@ -747,6 +747,8 @@ mod tests {
         }
         c.execute("DROP TABLE reader_settings", []).unwrap();
         c.execute("DROP TABLE article_visits", []).unwrap();
+        c.execute_batch("DROP TABLE api_keys; DROP TABLE api_rate_settings;")
+            .unwrap();
         c.pragma_update(None, "user_version", 3).unwrap();
         drop(c);
         let migrated = open_db(&path, false).unwrap();

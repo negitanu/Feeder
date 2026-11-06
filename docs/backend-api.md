@@ -60,3 +60,13 @@ Known v4 databases are backed up before the v5 migration. Migration preserves vi
 The versioned format includes `format: feeder-settings`, `format_version: 1`, `app_version`, `schema_version`, `exported_at`, `settings` (collection/reader/folders/subscriptions/presentation), `omissions` and `unsupported_sections`. Folder and subscription arrays use stored ordering. Omitted values become null with value-free path/reason records. Serialization uses explicit field allowlists and a consistent read transaction, and performs no collection, settings mutation, secret-store access or credential creation. URLs with credentials/query/fragment or credential-like names/paths are omitted conservatively. Runtime/source errors, conditional fetch headers, articles, visits, logs and queues are excluded. This is export-only and is not a data backup.
 
 Recognized v5 databases are backed up to `.v5-backup.sqlite3` before v6 migration. Existing backup paths and unknown schemas are refused.
+
+## Browser sessions and public API (schema v7)
+
+Production internal API writes require the `feeder_ui` cookie and `X-Feeder-CSRF`. `GET /api/session` returns `{csrf_token}` with no-store and creates/reuses an HttpOnly SameSite=Strict12-hour session. Restart invalidates sessions; clients must explicitly retry after a rejected action. Host/Origin/Fetch-Site checks precede internal requests; tunnel cookies are Secure.
+
+Session-protected `GET /api/keys` returns `{keys:[safe metadata...]}`. `POST /api/keys` accepts `{name,scope,days}` (1..80characters, read/write,1..365days) and returns `{id,token}` only once with no-store. `DELETE /api/keys/{id}` revokes. `GET/PATCH /api/keys/settings` uses `{rate_limit}` (1..1000/minute, default120). Tokens are256-bit random values persisted as SHA256 hashes only.
+
+`/api/v1` requires a separate Bearer key, supports the coreRSS/article endpoints and ID pagination documented in [API access](api-access-control.md), and never substitutes a browser session for authentication. Permission, expiration/revocation and rate counters are checked in an immediate transaction. Error codes are numeric. Public API operations do not create reader visits. Unmigrated source-specific settings fail explicitly.
+
+Configuration export now reports the actual schema version and `settings.api.rate_limit`; no key metadata, hashes, counters or tokens are included. Recognized v6 DBs retain a `.v6-backup.sqlite3` before migration.

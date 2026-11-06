@@ -1,6 +1,8 @@
+mod auth;
 mod collection;
 mod discovery;
 mod opml;
+mod public_api;
 mod reader;
 mod settings;
 use axum::{
@@ -60,7 +62,8 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
         let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if !objects.is_empty()
             && !(app_id == APP_ID
-                && ((version == 6 && settings::recognized_v6(&objects))
+                && ((version == 7 && auth::recognized_v7(&objects))
+                    || (version == 6 && settings::recognized_v6(&objects))
                     || (version == 5 && collection::recognized_v5(&objects))
                     || (version == 4 && reader::recognized_v4(&objects))
                     || (version == 3 && collection::recognized_v3(&objects))
@@ -84,7 +87,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     db.pragma_update(None, "foreign_keys", true)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if (1..=5).contains(&version) {
+    if (1..=6).contains(&version) {
         let backup_path = path.with_extension(format!("v{version}-backup.sqlite3"));
         if backup_path.exists() {
             return Err("database backup already exists; refusing to overwrite it".into());
@@ -112,7 +115,10 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     if version < 6 {
         settings::migrate(&tx)?;
     }
-    tx.pragma_update(None, "user_version", 6)?;
+    if version < 7 {
+        auth::migrate(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", 7)?;
     if demo {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
         if count == 0 {
@@ -226,8 +232,23 @@ fn valid_host(headers: &HeaderMap, bind: SocketAddr, allowed: Option<&[String]>)
 fn app(db: Db, bind: SocketAddr) -> Router {
     app_with_hosts(db, bind, None)
 }
+#[cfg(test)]
 fn app_with_hosts(db: Db, bind: SocketAddr, allowed: Option<Vec<String>>) -> Router {
+    base_router(db).layer(axum::middleware::from_fn(
+        move |request: axum::extract::Request, next: axum::middleware::Next| {
+            let allowed = allowed.clone();
+            async move {
+                if !valid_host(request.headers(), bind, allowed.as_deref()) {
+                    return StatusCode::FORBIDDEN.into_response();
+                }
+                next.run(request).await
+            }
+        },
+    ))
+}
+fn base_router(db: Db) -> Router {
     Router::new()
+        .merge(public_api::routes())
         .merge(collection::routes())
         .merge(discovery::routes())
         .merge(opml::routes())
@@ -241,17 +262,6 @@ fn app_with_hosts(db: Db, bind: SocketAddr, allowed: Option<Vec<String>>) -> Rou
         .route("/api/articles/{id}/state", post(update))
         .fallback_service(ServeDir::new("frontend/dist").append_index_html_on_directories(true))
         .with_state(db)
-        .layer(axum::middleware::from_fn(
-            move |request: axum::extract::Request, next: axum::middleware::Next| {
-                let allowed = allowed.clone();
-                async move {
-                    if !valid_host(request.headers(), bind, allowed.as_deref()) {
-                        return StatusCode::FORBIDDEN.into_response();
-                    }
-                    next.run(request).await
-                }
-            },
-        ))
 }
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -261,6 +271,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [cmd] if cmd == "worker" => Some(false),
         [cmd, option] if cmd == "worker" && option == "--once" => Some(true),
         _ => return Err("usage: feeder [worker [--once]]".into()),
+    };
+    let access = if worker.is_none() {
+        Some(auth::Access::from_env()?)
+    } else {
+        None
     };
     let allowed = std::env::var("FEEDER_ALLOWED_HOSTS")
         .ok()
@@ -284,12 +299,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     eprintln!("Feeder listening on http://{}", listener.local_addr()?);
     let actual_bind = listener.local_addr()?;
-    axum::serve(listener, app_with_hosts(db, actual_bind, allowed))
-        .with_graceful_shutdown(async move {
-            let mut shutdown = shutdown_rx;
-            let _ = shutdown.changed().await;
-        })
-        .await?;
+    let access = access.expect("web access configuration");
+    let router = base_router(db.clone()).merge(auth::routes(access.clone()).with_state(db.clone()));
+    axum::serve(
+        listener,
+        auth::wrap(router, db, access, actual_bind, allowed),
+    )
+    .with_graceful_shutdown(async move {
+        let mut shutdown = shutdown_rx;
+        let _ = shutdown.changed().await;
+    })
+    .await?;
     Ok(())
 }
 
@@ -562,6 +582,8 @@ mod tests {
         ] {
             db.execute(sql, []).unwrap();
         }
+        db.execute_batch("DROP TABLE api_keys; DROP TABLE api_rate_settings;")
+            .unwrap();
         db.execute("DROP TABLE reader_settings", []).unwrap();
         db.execute("DROP TABLE article_visits", []).unwrap();
         db.execute("DROP TABLE refresh_leases", []).unwrap();
