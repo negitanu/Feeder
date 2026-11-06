@@ -113,3 +113,7 @@ Feeder `sidebar-organization` で DB による順序・所属保存、直接ド�
 ## 表示設定・エクスポートの対応状況
 
 `reader-settings-export` で旧 `preferences.py` の初期表示・UTC/JST と `configuration_export.py` のバージョン付き・allowlist・秘密除外・読取専用の書き出しを移植。ブラウザの標準/1行/タイル、テーマ、幅、フォルダー開閉を現在のメモリー上の値から書き出す。旧のAI/connector/notification等の設定、API上限、設定全体の読み込み・旧DB完全変換は未完了。日付検索も共有タイムゾーンへ更新。詳細は[表示設定・持ち出し](reader-settings-export.md)を参照。
+
+## API・アクセス制御の対応
+
+`api-access-control` で旧 `access.py` / `keys.py` / `api.py` のlocal/tunnel境界、ブラウザCSRF、キー発行・失効・期限・read/write・上限、RSS/記事の公開APIを部分移植。参照は旧API利用方法 (`FeedAstrolabe/docs/api.md`)と[Feeder対応範囲](api-access-control.md)。旧DB/キー移行、全フィールド/SNS/研究API、アプリ内JWT検証、実ドメインAccess受入は未完了。

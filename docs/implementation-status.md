@@ -53,3 +53,9 @@ Linuxコンテナを正式な実行環境として `linux-container-runtime` を
 `reader-settings-export` で共有の初期表示・UTC/JST、タイムゾーンに整合した日付検索、ブラウザ別の標準/1行/タイル表示と安全な設定JSONのダウンロードを移植。DB v6 は既知の v5 をバックアップして更新する。エクスポートは実装済み設定の範囲で、記事・履歴や秘密を含めず、設定全体の読み込みは未実装。
 
 結果: [表示設定の検証](verification-reader-settings-export.md)。次は認証・公開API、継続カーソルなど残る読書仕様と、研究・根拠・外部連携の移植。
+
+## APIキーとアクセス境界
+
+`api-access-control` でブラウザセッション/CSRF、APIキーの発行・失効・期限・権限・回数上限と、RSS/記事の公開v1 APIを実装。DB v7 はv6バックアップを保持する。外部公開用Composeはoriginのhost portを消し、Access/Protect with Accessを必須とする運用設計。
+
+結果: [アクセス制御の検証](verification-api-access-control.md)。実ドメインの公開受入、アプリ内JWT検証、旧DB/API全体の互換性は未完了。次は残る読書継続仕様と、研究・根拠・外部連携の移植。

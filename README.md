@@ -22,7 +22,7 @@ docker compose up -d --wait
 
 `http://127.0.0.1:8080` を開きます。Web と定期収集 worker が起動し、専用 named volume の `/data/feeder.sqlite3` を共有します。初期状態は空ライブラリ、自動収集は無効です。生成記事を使う検証環境のみ `FEEDER_DEMO=1` を指定してください。
 
-[Linux 配備・更新・バックアップ手順](docs/deployment.md)に、ポート変更、ログ、停止、データ保全と検証方法を記載しています。現段階はホストのループバックからの利用を前提とし、外部認証の移植後に公開構成を追加します。
+[Linux 配備・更新・バックアップ手順](docs/deployment.md)に、ポート変更、ログ、停止、データ保全と検証方法を記載しています。標準構成はホストのループバックからの利用を前提とします。保護されたTunnel用の構成例もありますが、実ドメインでの外部認証の受入確認は未実施です。
 
 ## 検証
 
@@ -37,7 +37,7 @@ python3 scripts/container-smoke.py
 
 「集める」で公開サイトまたは RSS/Atom のURLを入力し、候補を選んで内容をプレビューします。「このフィードを登録」で確定するまで購読は追加されません。プレビュー確認は同じセッション内で15分間有効で、再起動・期限切れ・失敗後は再プレビューしてください。左ペインのフォルダー名で記事を表示し、矢印で開閉します。フィードの右クリック／「⋯」から編集、移動、停止／再開、手動更新、削除ができます。停止は記事を残し、削除はその購読の記事を削除します。自動収集は下記の設定と独立workerを使用します。
 
-既知のFeeder v1/v2/v3/v4/v5 DBは更新前に同じ場所の `*.v1-backup.sqlite3` / `*.v2-backup.sqlite3` / `*.v3-backup.sqlite3` / `*.v4-backup.sqlite3` / `*.v5-backup.sqlite3` へバックアップを作成します。同名バックアップがある場合は上書きせず起動を拒否します。旧FeedAstrolabe DBは直接利用せず、[読取専用検査](docs/legacy-db-inspection.md)で移行準備を進めます。
+既知のFeeder v1/v2/v3/v4/v5/v6 DBは更新前に同じ場所の `*.v1-backup.sqlite3` / `*.v2-backup.sqlite3` / `*.v3-backup.sqlite3` / `*.v4-backup.sqlite3` / `*.v5-backup.sqlite3` / `*.v6-backup.sqlite3` へバックアップを作成します。同名バックアップがある場合は上書きせず起動を拒否します。旧FeedAstrolabe DBは直接利用せず、[読取専用検査](docs/legacy-db-inspection.md)で移行準備を進めます。
 
 ## 自動収集と OPML
 
@@ -62,3 +62,5 @@ OPMLファイルは1 MiBまで、1000 outline・16階層までです。ファイ
 フォルダー・フィードの並べ替えと幅変更は [ライブラリの配置](docs/sidebar-organization.md)を参照してください。順序は共有DB、幅はブラウザに保存します。
 
 [表示設定・設定エクスポート](docs/reader-settings-export.md)では、初期表示、UTC／日本時間、標準・1行・タイル表示と、安全な設定の持ち出しを扱います。
+
+[アクセス制御とAPIキー](docs/api-access-control.md)に、キーの発行・失効、公開APIのRSS／記事サブセットと、外部公開用の保護されたTunnel構成を記載しています。通常のComposeは引き続きローカル専用です。
