@@ -23,7 +23,7 @@ try {
  await page.getByRole('button',{name:'検証フォルダーを折りたたむ',exact:true}).click();
  await page.reload();
  await page.getByRole('button',{name:'検証フォルダーを展開',exact:true}).waitFor();
- await page.getByRole('button',{name:/^▰ 検証フォルダー$/}).click();
+ await page.getByRole('button',{name:/^検証フォルダー$/}).click();
  await page.getByRole('button',{name:'検証フォルダーを展開',exact:true}).waitFor();
  await page.getByRole('button',{name:'検証フォルダーを展開',exact:true}).click();
  await page.getByRole('button',{name:'検証購読の操作',exact:true}).click();

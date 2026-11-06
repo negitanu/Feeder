@@ -1,0 +1,2 @@
+## Design
+Polish the existing teal brand rather than changing the product. Use a 4px rhythm, neutral chrome, three text roles, 36px desktop/40px mobile controls and a single 16px stroke-1.5 icon set. Preserve section order, responsive sidebar, keyboard labels and selectors, persisted readability, and reader state. Keep article titles as the visual focus. Use no generated images or decorative charts. Limit screenshot review to three rounds with synthetic data.

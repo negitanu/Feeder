@@ -4,6 +4,7 @@ import App from './App'
 import './style.css'
 import './source-theme.css'
 import './readability.css'
+import './ui-craft.css'
 import { applyReadability } from './ReadabilityPanel'
 
 applyReadability()
