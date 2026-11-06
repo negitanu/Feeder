@@ -1,0 +1,72 @@
+# Linux コンテナでの実行
+
+Feeder の正式な実行環境は Linux コンテナです。ネイティブの Mac/Windows アプリは提供しません。Docker Engine と Compose v2 を用意し、このリポジトリのルートで操作します。現在の Web/worker は移植途中の実装で、既存 FeedAstrolabe の本番置換は全体受入後です。
+
+## 起動
+
+```sh
+# 既定値は .env なしでも動作する。ポート等を変える場合のみ編集する。
+cp .env.example .env
+docker compose config --quiet
+docker compose build --pull
+docker compose up -d --wait
+docker compose ps
+```
+
+`http://127.0.0.1:8080` を開きます。React の静的ファイルは Rust の Web プロセスから配信します。ホストに Rust/Node.js をインストールする必要はありません。イメージ内も runtime にはコンパイラや Node.js を含めません。
+
+初期状態は空ライブラリです。「集める」で購読します。デモ用の生成記事が必要な使い捨て環境のみ `FEEDER_DEMO=1` を設定してください。Web と worker は同じ `/data/feeder.sqlite3` を使用し、プロジェクト専用 named volume `feeder_feeder-data` に永続化します。既存 FeedAstrolabe のボリュームは使用しません。
+
+## Web と worker
+
+Web の health が成功してから worker が起動します。「集める」で自動収集を有効にすると、worker が期限を迎えた購読を更新します。初期状態は無効、更新間隔は900秒です。worker は30秒ごとに確認し、一巡で最大100購読を処理します。購読の停止は記事を保持し、無効化は新しい定期取得を止めます。
+
+```sh
+docker compose logs --tail 100 web worker
+docker compose stop
+docker compose start --wait
+```
+
+SIGTERM/SIGINT で新規処理を止め、上限付きの実行中処理を終えてから終了します。停止猶予は30秒です。Web と worker は同じ UID/GID 10001、read-only root filesystem、capabilities 全削除、no-new-privileges、容量制限付き tmpfs で動きます。データの書込み先は専用 `/data` です。
+
+## ポートと HTTP の許可
+
+`FEEDER_PORT` でホスト側ポートを変えられます。既定の公開先はホストの `127.0.0.1` のみです。コンテナ内は `0.0.0.0:8080` で待受け、許可された Host と同一 authority の Origin を検査します。forwarded ヘッダーでこの検査を迂回できません。
+
+`FEEDER_ALLOWED_HOSTS` を明示指定する場合はクライアントのポートを含め、health 用 `127.0.0.1:8080` も残してください。既定値は Compose が `FEEDER_PORT` に合わせて計算します。[実行設定](runtime-config.md)を参照してください。
+
+外部認証と Cloudflare Tunnel はまだ移植していません。現在の Compose はホストローカルからの利用を前提とし、認証境界の実装・受入前に外部へ公開しません。旧 renderer/observer も未移植であり、動作しない仮サービスは追加していません。
+
+## 更新と永続データ
+
+```sh
+docker compose build --pull
+docker compose up -d --wait
+```
+
+再作成しても named volume は保持されます。既知の Feeder v1/v2/v3 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
+
+DB 変更を含む更新前には Web と worker の両方を止め、一貫したデータ一式を退避・復元確認します。Feeder は今後の根拠ファイル等も含めて保全する方針です。例として、停止中の `/data` をホストへ取得できます。
+
+```sh
+mkdir -p backups
+docker compose stop
+docker compose run --rm --no-deps -T --entrypoint tar web -C /data -czf - . > backups/feeder-data.tar.gz
+# アーカイブの内容確認。実際の復元は別プロジェクトの新規volumeで試験する。
+tar -tzf backups/feeder-data.tar.gz
+docker compose start --wait
+```
+
+通常の `docker compose down` はコンテナを削除しても volume を残します。運用データへ `down --volumes` を実行しないでください。バックアップと切替の受入は [データ移行計画](data-cutover.md)に従います。上のtar手順は実環境復旧を完了させるものではなく、更新前に別volumeで復元と整合性を確認する必要があります。
+
+## Linux での自動検証
+
+```sh
+docker build --target backend-test .
+docker compose --env-file /dev/null build
+python3 scripts/container-smoke.py
+```
+
+最後のスクリプトは UUID を使った新しい専用プロジェクトを作り、生成データで health、UI/API、Host/Origin、非root/read-only、再作成後の状態・設定保持、別volumeでのバックアップ復元、worker正常終了を検証します。終了時にその実行が作ったテストコンテナとテストvolumeだけを削除します。通常の `feeder` 環境は操作しません。
+
+ブラウザも接続する場合は、検証用Playwright/Chromiumを用意して `FEEDER_BROWSER_SMOKE=1 python3 scripts/container-smoke.py` を実行します。アプリ本体はLinuxコンテナ内で実行されます。
