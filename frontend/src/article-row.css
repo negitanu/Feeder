@@ -1,0 +1,111 @@
+.article-row-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
+  width: 100%;
+}
+
+.article-row-content > .source {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-row-content > strong {
+  min-width: 0;
+}
+
+.article-row-content > .card-meta {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.article-row-content > .excerpt {
+  min-width: 0;
+}
+
+.layout-line .card-copy.article-row-content {
+  display: grid;
+  grid-template-columns: minmax(100px, 160px) minmax(0, 1fr) minmax(150px, 180px);
+  align-items: center;
+  gap: 14px;
+}
+
+.layout-line .article-row-content > .source,
+.layout-line .article-row-content > strong,
+.layout-line .article-row-content > .card-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout-line .article-row-content > strong {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.layout-line .article-row-content > .source {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.layout-line .article-row-content > .card-meta {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: right;
+  max-width: none;
+}
+
+.layout-line .article-row-content > .excerpt {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .article-row-content > .source,
+  .article-row-content > .card-meta {
+    font-size: 11px;
+  }
+
+  .layout-line .card-copy.article-row-content {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 8px;
+  }
+
+  .layout-line .article-row-content > .source {
+    grid-column: 1;
+    grid-row: 1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .layout-line .article-row-content > .card-meta {
+    grid-column: 2;
+    grid-row: 1;
+    white-space: normal;
+    text-align: right;
+  }
+
+  .layout-line .article-row-content > strong {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+.layout-tiles .article-row-content > .source,
+.layout-tiles .article-row-content > .card-meta {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
