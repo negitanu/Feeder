@@ -1,0 +1,6 @@
+.social-form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.social-form label { display: grid; gap: .3rem; min-width: min(100%, 12rem); }
+.social-form input, .social-form select { max-width: 100%; }
+.social-list { list-style: none; padding: 0; }
+.social-list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--border, #8886); }
+.social-list li div { display: grid; gap: .25rem; overflow-wrap: anywhere; }
