@@ -489,6 +489,9 @@ pub(super) fn edit_url(db: &Connection, id: i64, input: Option<&str>) -> Result<
     let Some(input) = input else {
         return Ok(());
     };
+    if super::social::is_source(db, id)? {
+        return Err(StatusCode::CONFLICT);
+    }
     if input.len() > 8192 {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -898,7 +901,7 @@ async fn refresh(
 }
 pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Feed, StatusCode> {
     let owner = super::discovery::random()?;
-    let (url, etag, modified) = {
+    let (url, etag, modified, social) = {
         let mut db = db.lock().map_err(err)?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -920,15 +923,20 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
                 ))
             })
             .map_err(err)?;
+        let social = super::social::source_for_feed(&tx, id)?;
         tx.commit().map_err(err)?;
-        (f.url, e, m)
+        (f.url, e, m, social)
     };
-    let result = fetch(&url, etag.as_deref(), modified.as_deref()).await;
+    let result = if let Some(source) = social {
+        super::social::fetch(source).await
+    } else {
+        fetch(&url, etag.as_deref(), modified.as_deref()).await
+    };
     let mut db = db.lock().map_err(err)?;
     let outcome = match result {
         Ok(result) => apply_refresh(&mut db, id, result, Some(&owner)),
         Err(status) => {
-            db.execute("UPDATE feeds SET last_checked=datetime('now'),last_error=? WHERE id=? AND paused=0 AND EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![format!("Refresh failed ({})", status.as_u16()),id,id,owner]).map_err(err)?;
+            apply_refresh_failure(&mut db, id, &owner, status)?;
             Err(status)
         }
     };
@@ -1020,6 +1028,22 @@ pub async fn worker(
     }
 }
 
+fn apply_refresh_failure(
+    db: &mut Connection,
+    id: i64,
+    owner: &str,
+    status: StatusCode,
+) -> Result<(), StatusCode> {
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(err)?;
+    let changed = tx.execute("UPDATE feeds SET last_checked=datetime('now'),last_error=? WHERE id=? AND paused=0 AND EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![format!("Refresh failed ({})", status.as_u16()),id,id,owner]).map_err(err)?;
+    if changed == 1 {
+        super::collection_health::record_attempt(&tx, id, false).map_err(err)?;
+    }
+    tx.commit().map_err(err)?;
+    Ok(())
+}
 fn apply_refresh(
     db: &mut Connection,
     id: i64,
@@ -1051,6 +1075,9 @@ fn apply_refresh(
         [id],
     )
     .map_err(err)?;
+    if owner.is_some() {
+        super::collection_health::record_attempt(&tx, id, true).map_err(err)?;
+    }
     tx.commit().map_err(err)?;
     get_feed(db, id)
 }
@@ -1234,6 +1261,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db");
         let c = open_db(&path, false).unwrap();
+        super::super::extensions::drop_for_legacy_fixture(&c);
         c.execute_batch("INSERT INTO folders(id,name) VALUES (1,'Z'),(2,'A'); INSERT INTO feeds(id,url,title,folder_id) VALUES (1,'https://a','Z',1),(2,'https://b','A',1),(3,'https://c','C',NULL); DROP TRIGGER folder_order_insert; DROP TRIGGER feed_order_insert; DROP TRIGGER feed_order_move; DROP TABLE feed_order; DROP TABLE folder_order; DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=4;").unwrap();
         drop(c);
         let c = open_db(&path, false).unwrap();
@@ -1309,6 +1337,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db.sqlite3");
         let c = open_db(&path, false).unwrap();
+        super::super::extensions::drop_for_legacy_fixture(&c);
         c.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.org/feed','Saved'); INSERT INTO articles(id,title,content,url,published,feed_id,is_read,is_starred) VALUES(1,'saved','body','https://example.org/a','2026',1,1,1); INSERT INTO article_visits VALUES(1,'2026-01-01'); INSERT INTO api_keys(name,prefix,token_hash,scope,expires_at) VALUES('synthetic','prefix','synthetic-hash','read','2099-01-01'); UPDATE reader_settings SET default_view='starred'; DROP TABLE feed_poll_intervals; PRAGMA user_version=7;").unwrap();
         drop(c);
         let backup = path.with_extension("v7-backup.sqlite3");
@@ -1320,7 +1349,7 @@ mod tests {
         assert_eq!(
             c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            8
+            9
         );
         assert!(lookup(&c, 1).unwrap().is_starred);
         assert_eq!(
@@ -1534,6 +1563,75 @@ mod tests {
             ),
             Err(StatusCode::NOT_FOUND)
         ));
+    }
+    #[test]
+    fn health_tracks_only_accepted_lease_completions() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = open_db(&dir.path().join("db"), false).unwrap();
+        db.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.org/feed','test'); INSERT INTO refresh_leases VALUES(1,'owner',unixepoch()+60);").unwrap();
+        apply_refresh_failure(&mut db, 1, "owner", StatusCode::BAD_GATEWAY).unwrap();
+        apply_refresh_failure(&mut db, 1, "stale", StatusCode::BAD_GATEWAY).unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT consecutive_failures FROM collection_health WHERE feed_id=1",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            db.query_row("SELECT last_error FROM feeds WHERE id=1", [], |r| r
+                .get::<_, String>(0))
+                .unwrap(),
+            "Refresh failed (502)"
+        );
+        apply_refresh(
+            &mut db,
+            1,
+            Fetched {
+                parsed: None,
+                etag: None,
+                modified: None,
+            },
+            Some("owner"),
+        )
+        .unwrap();
+        let health: (i64, bool) = db.query_row("SELECT consecutive_failures,last_success IS NOT NULL FROM collection_health WHERE feed_id=1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(health, (0, true));
+        db.execute("UPDATE feeds SET paused=1 WHERE id=1", [])
+            .unwrap();
+        apply_refresh_failure(&mut db, 1, "owner", StatusCode::BAD_GATEWAY).unwrap();
+        assert!(
+            apply_refresh(
+                &mut db,
+                1,
+                Fetched {
+                    parsed: None,
+                    etag: None,
+                    modified: None
+                },
+                Some("owner")
+            )
+            .is_err()
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT consecutive_failures FROM collection_health",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        db.execute("DELETE FROM feeds WHERE id=1", []).unwrap();
+        apply_refresh_failure(&mut db, 1, "owner", StatusCode::BAD_GATEWAY).unwrap();
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM collection_health", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
     #[test]
     fn expired_refresh_cannot_apply_after_url_change() {
