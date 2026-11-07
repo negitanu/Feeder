@@ -32,3 +32,21 @@ exports/
 
 __pycache__/
 *.pyc
+
+# Local editor and agent workspace metadata
+.idea/
+.vscode/
+.cursor/
+.codex/
+.agents/
+*.swp
+*.swo
+*~
+
+# Local archives, dumps, and temporary files
+*.bak
+*.dump
+*.sql.gz
+*.tar.gz
+*.tgz
+*.tmp
