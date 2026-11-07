@@ -1,0 +1,22 @@
+import {browserSession} from './browser-session.mjs';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(new URL('../frontend/package.json',import.meta.url));const {chromium}=require('@playwright/test');const browser=await chromium.launch();const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
+try {
+ const page=await browser.newPage({viewport:{width:1280,height:900}});await browserSession(page,origin);assert.equal((await page.request.patch(origin+'/api/reader/settings',{data:{default_view:'all'}})).status(),200);await page.goto(origin);await page.locator('.article-open').first().waitFor();
+ const id=await page.locator('.article-open').first().getAttribute('data-article-id');
+ const original=(await(await page.request.get(origin+`/api/articles/${id}`)).json());assert.equal((await page.request.post(origin+`/api/articles/${id}/state`,{data:{starred:false}})).status(),200);await page.reload();await page.locator('.article-open').first().waitFor();
+ const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=480;c.height=120;c.getContext('2d').fillRect(0,0,480,120);return c.toDataURL('image/png').split(',')[1]});
+ await page.route(`**/api/articles/${id}/hero`,route=>route.fulfill({contentType:'image/png',body:Buffer.from(png,'base64')}));
+ await page.route(`**/api/articles/${id}/visit`,async route=>{const response=await route.fetch();const value=await response.json();await route.fulfill({response,json:{...value,published:'2026-10-24T08:19:50Z'}})});
+ assert.equal(await page.evaluate(async()=>{const header=await(await fetch(document.querySelector('.brand img').src)).text();const favicon=await(await fetch(document.querySelector('link[rel=icon]').href)).text();return header===favicon}),true);
+ await page.locator('.article-open').first().click();await page.locator('.article-hero:not([hidden])').waitFor();assert.equal(await page.locator('.article-hero').evaluate(el=>el.getBoundingClientRect().width),480);assert.equal(await page.locator('.article-detail time').innerText(),'2026-10-24 17:19:50 JST');
+ assert.deepEqual(await page.locator('.article-body').evaluate(el=>[...el.children].map(c=>c.tagName)),['IMG','H1','DIV','HR','DIV','HR']);
+ await page.locator('.article-card').filter({has:page.locator(`[data-article-id="${id}"]`)}).locator('.article-select').check();await page.locator('.article-detail').waitFor({state:'detached'});
+ const action=page.getByRole('combobox',{name:'一括操作',exact:true});assert.equal(await action.evaluate(el=>getComputedStyle(el).borderRadius),'8px');assert.equal(await page.getByRole('button',{name:'実行',exact:true}).isDisabled(),true);await action.selectOption('star');
+ assert.equal((await(await page.request.get(origin+`/api/articles/${id}`)).json()).is_starred,false);
+ const saved=page.waitForResponse(r=>r.url().endsWith('/api/articles/bulk-state'));await page.getByRole('button',{name:'実行',exact:true}).click();assert.equal((await saved).status(),200);await page.locator('.article-card').filter({has:page.locator(`[data-article-id="${id}"]`)}).locator('.card-star[aria-pressed=true]').waitFor();
+ await action.selectOption('read');await page.route('**/api/articles/bulk-state',route=>route.fulfill({status:503,body:'unavailable'}),{times:1});await page.getByRole('button',{name:'実行',exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await action.inputValue(),'read');
+ await page.setViewportSize({width:390,height:844});await page.locator(`[data-article-id="${id}"]`).click();await page.locator('.article-hero:not([hidden])').waitFor();assert.ok(await page.locator('.article-hero').evaluate(el=>el.getBoundingClientRect().width<=innerWidth-32));await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.article-detail').evaluate(el=>getComputedStyle(el).animationName),'none');await page.keyboard.press('Escape');await page.locator('.article-detail').waitFor({state:'detached'});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.equal((await page.request.post(origin+`/api/articles/${id}/state`,{data:{starred:original.is_starred}})).status(),200);console.log('Detail layout passed: hero, JST timestamp/order, rounded bulk dropdown, explicit apply/failure, shared favicon, mobile and reduced motion.');
+}finally{await browser.close()}

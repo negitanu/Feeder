@@ -1,0 +1,74 @@
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.bulk-actions-count {
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.bulk-actions select,
+.bulk-actions button {
+  min-height: 36px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.bulk-actions select {
+  min-width: 160px;
+}
+
+.bulk-actions button {
+  cursor: pointer;
+}
+
+.bulk-actions button:disabled,
+.bulk-actions select:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.bulk-actions button:focus-visible,
+.bulk-actions select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .bulk-actions {
+    align-items: stretch;
+  }
+
+  .bulk-actions-count {
+    flex: 1 0 100%;
+  }
+
+  .bulk-actions-select-label {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .bulk-actions select {
+    width: 100%;
+  }
+
+  .bulk-actions button {
+    flex: 1 1 auto;
+  }
+}

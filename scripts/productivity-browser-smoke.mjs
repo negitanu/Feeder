@@ -29,7 +29,7 @@ try{
  await page.waitForFunction(()=>document.querySelectorAll('.article-card.read').length>0);
  const all=await list();assert.equal(all.items.filter(a=>a.is_read).length,25);assert.equal(all.items.filter(a=>!a.is_read).length,11);
  const selected=page.getByRole('checkbox',{name:/^記事を選択:/});await selected.nth(0).check();await selected.nth(1).check();
- await page.getByRole('button',{name:/選択.*スターを付ける/}).click();
+ await page.getByRole('combobox',{name:'一括操作',exact:true}).selectOption('star');await page.getByRole('button',{name:'実行',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('.article-card .is-starred').length===2);
  const starIds=(await list('&starred=true')).items.map(a=>a.id);assert.equal(starIds.length,2);
  await page.locator('.load-sentinel').scrollIntoViewIfNeeded();

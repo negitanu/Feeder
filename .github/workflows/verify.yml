@@ -86,6 +86,6 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npx --prefix frontend playwright install --with-deps chromium
       - name: Isolated Compose acceptance
-        run: FEEDER_BROWSER_SMOKE=1 FEEDER_PRODUCTIVITY_SMOKE=1 FEEDER_SIDEBAR_SMOKE=1 FEEDER_SETTINGS_SMOKE=1 FEEDER_ACCESS_SMOKE=1 FEEDER_SAVED_SEARCH_SMOKE=1 FEEDER_READABILITY_SMOKE=1 FEEDER_ONBOARDING_SMOKE=1 python3 scripts/container-smoke.py
+        run: FEEDER_BROWSER_SMOKE=1 FEEDER_PRODUCTIVITY_SMOKE=1 FEEDER_SIDEBAR_SMOKE=1 FEEDER_SETTINGS_SMOKE=1 FEEDER_ACCESS_SMOKE=1 FEEDER_SAVED_SEARCH_SMOKE=1 FEEDER_READABILITY_SMOKE=1 FEEDER_ONBOARDING_SMOKE=1 FEEDER_DETAIL_LAYOUT_SMOKE=1 python3 scripts/container-smoke.py
       - name: Subscription manager synthetic browser acceptance
         run: node scripts/subscription-manager-browser-smoke.mjs
