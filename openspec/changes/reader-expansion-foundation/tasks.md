@@ -3,4 +3,4 @@
 - [x] 1.2 Integrate feature modules, queries, UI and publisher metadata.
 - [x] 1.3 Verify migration/restore, security and browser workflows; commit by purpose.
 
-Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance and touch-device checks remain unverified.
+Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance is recorded in that verification report; physical touch-device checks remain unverified.

@@ -4,4 +4,4 @@
 - [x] reader の共通フィルタ、revision fingerprint、認可、マイグレーション登録（統合担当）
 - [ ] PC／モバイル、テーマ、マウス・タッチ・キーボードの統合検証
 
-Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance and touch-device checks remain unverified.
+Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance is recorded in that verification report; physical touch-device checks remain unverified.

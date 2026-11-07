@@ -15,11 +15,11 @@ docker compose ps
 
 `http://127.0.0.1:8080` を開きます。React の静的ファイルは Rust の Web プロセスから配信します。ホストに Rust/Node.js をインストールする必要はありません。イメージ内も runtime にはコンパイラや Node.js を含めません。
 
-初期状態は空ライブラリです。「集める」で購読します。デモ用の生成記事が必要な使い捨て環境のみ `FEEDER_DEMO=1` を設定してください。Web と worker は同じ `/data/feeder.sqlite3` を使用し、プロジェクト専用 named volume `feeder_feeder-data` に永続化します。既存 FeedAstrolabe のボリュームは使用しません。
+初期状態は空ライブラリです。「設定」の購読追加から購読します。デモ用の生成記事が必要な使い捨て環境のみ `FEEDER_DEMO=1` を設定してください。Web と worker は同じ `/data/feeder.sqlite3` を使用し、プロジェクト専用 named volume `feeder_feeder-data` に永続化します。既存 FeedAstrolabe のボリュームは使用しません。
 
 ## Web と worker
 
-Web の health が成功してから worker が起動します。「集める」で自動収集を有効にすると、worker が期限を迎えた購読を更新します。初期状態は無効、更新間隔は900秒です。worker は30秒ごとに確認し、一巡で最大100購読を処理します。購読の停止は記事を保持し、無効化は新しい定期取得を止めます。
+Web の health が成功してから worker が起動します。「設定」の自動収集を有効にすると、worker が期限を迎えた購読を更新します。新規環境の初期状態は有効、更新間隔は900秒です。既存環境で明示的に無効にした設定は保持されます。worker は30秒ごとに確認し、一巡で最大100購読を処理します。購読の停止は記事を保持し、無効化は新しい定期取得を止めます。
 
 ```sh
 docker compose logs --tail 100 web worker
@@ -44,7 +44,7 @@ docker compose build --pull
 docker compose up -d --wait
 ```
 
-再作成しても named volume は保持されます。既知の Feeder v1/v2/v3/v4/v5/v6 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
+再作成しても named volume は保持されます。既知の Feeder v1〜v8 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
 
 DB 変更を含む更新前には Web と worker の両方を止め、一貫したデータ一式を退避・復元確認します。Feeder は今後の根拠ファイル等も含めて保全する方針です。例として、停止中の `/data` をホストへ取得できます。
 
@@ -80,3 +80,5 @@ DB v7 はAPIキーのハッシュ・期限・失効とAPI回数上限を追加�
 DB v8 はフィードごとの収集間隔を追加します。認識済みの Feeder v7 から更新する際、`feeder.v7-backup.sqlite3` を作ります。未設定のフィードは全体設定を継承します。
 
 外部公開には[保護されたTunnel構成](api-access-control.md)を参照してください。`.env` にTunnel設定を行い、`docker compose up -d` で起動します。設定の構文検査だけで実際のAccessポリシー・JWT検証が完了したとは扱いません。実ドメインの受入は別途必要です。
+
+DB v9 は共有検索、公開SNS、あとで読む、ミュート、収集診断の追加保存先を作成します。認識済みv8からの更新前に `feeder.v8-backup.sqlite3` を保存し、既読・スター・履歴・購読順序・既存設定を保持します。完全な復旧には `/data` 全体の整合バックアップを用いてください。最新の実施結果と制限は [Reader拡張の検証](verification-reader-expansion.md) を参照してください。

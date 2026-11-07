@@ -5,4 +5,4 @@
 - [x] Verify TypeScript production build and UTC/JST timestamp output with a synthetic timestamp.
 - [x] Verify desktop/mobile rendering after the integrating App change.
 
-Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance and touch-device checks remain unverified.
+Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance is recorded in that verification report; physical touch-device checks remain unverified.

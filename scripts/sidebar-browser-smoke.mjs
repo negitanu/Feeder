@@ -23,7 +23,7 @@ try {
  await keyboard('folder',folders[2].id,'Home');assert.equal(await page.locator('.article-select:checked').count(),1);assert.equal((await library()).folders[0].id,folders[2].id);
  await keyboard('feed',feedB.id,'Home');assert.equal((await library()).feeds.filter(f=>f.folder_id===folders[0].id)[0].id,feedB.id);
  await page.reload();await handle('feed',feedB.id).waitFor();
- assert.equal(await page.locator(`[data-order-target="feed"]`).first().getAttribute('data-order-id'),String(feedB.id));
+ assert.equal(await page.locator(`[data-order-target="folder"][data-order-id="${folders[0].id}"]`).locator('..').locator('[data-order-target="feed"]').first().getAttribute('data-order-id'),String(feedB.id));
  // An independent browser gets the DB order without any copied browser storage.
  const other=await browser.newPage();await other.goto(origin);await other.locator(`[data-order-target="folder"][data-order-id="${folders[2].id}"]`).waitFor();assert.equal(await other.locator('[data-order-target="folder"]').first().getAttribute('data-order-id'),String(folders[2].id));await other.close();
  await page.getByRole('button',{name:`${names[1]}を折りたたむ`,exact:true}).click();

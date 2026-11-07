@@ -4,4 +4,4 @@
 - [x] Document integration and verify synthetic fixtures and frontend build.
 - [x] Integrate router, migration, visit hook and UI in shared application files (parent task).
 
-Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance and touch-device checks remain unverified.
+Integration evidence and remaining limits: `docs/verification-reader-expansion.md`. Linux image acceptance is recorded in that verification report; physical touch-device checks remain unverified.
