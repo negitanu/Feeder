@@ -371,7 +371,7 @@ function App() {
       const full = await request<Article>(`/api/articles/${article.id}/visit`, { method: 'POST' })
       snapshots.current.clear(); setLaterRefresh(value => value + 1)
       void loadUnreadCount()
-      if (detailRun !== detailGeneration.current || filtersKeyRef.current !== key || listRun !== generation.current) return
+      if (filtersKeyRef.current !== key || listRun !== generation.current) return
       setDetailSequence(current => current.map(item => item.id === full.id ? full : item))
       setItems(current => !eligible(full) ? current.filter(item => item.id !== full.id) : ordered(current.map(item => item.id === full.id ? full : item)))
       if (eligible(article) && !eligible(full) && !visitRemovals.current.has(full.id)) { visitRemovals.current.add(full.id); setTotal(value => Math.max(0,value-1)); setSelectedIds(current => current.filter(id => id !== full.id)) }

@@ -1,0 +1,3 @@
+- [x] Specify separate list and panel generation contracts.
+- [x] Reconcile retained-list visit state independently from panel visibility.
+- [x] Verify delayed dismissal, superseded detail, Linux browser and backup/restore regressions.

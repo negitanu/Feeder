@@ -1,0 +1,1 @@
+The list generation and filter key determine whether visit data can update retained rows. The detail generation separately determines whether the panel can open. Closing a panel invalidates only its presentation; changing list scope invalidates row reconciliation. Reuse the existing delayed-visit and later-request-wins browser checks.
