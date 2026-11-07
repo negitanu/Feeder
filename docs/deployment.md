@@ -44,7 +44,7 @@ docker compose build --pull
 docker compose up -d --wait
 ```
 
-再作成しても named volume は保持されます。既知の Feeder v1〜v8 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
+再作成しても named volume は保持されます。既知の Feeder v1〜v9 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
 
 DB 変更を含む更新前には Web と worker の両方を止め、一貫したデータ一式を退避・復元確認します。Feeder は今後の根拠ファイル等も含めて保全する方針です。例として、停止中の `/data` をホストへ取得できます。
 
@@ -82,3 +82,11 @@ DB v8 はフィードごとの収集間隔を追加します。認識済みの F
 外部公開には[保護されたTunnel構成](api-access-control.md)を参照してください。`.env` にTunnel設定を行い、`docker compose up -d` で起動します。設定の構文検査だけで実際のAccessポリシー・JWT検証が完了したとは扱いません。実ドメインの受入は別途必要です。
 
 DB v9 は共有検索、公開SNS、あとで読む、ミュート、収集診断の追加保存先を作成します。認識済みv8からの更新前に `feeder.v8-backup.sqlite3` を保存し、既読・スター・履歴・購読順序・既存設定を保持します。完全な復旧には `/data` 全体の整合バックアップを用いてください。最新の実施結果と制限は [Reader拡張の検証](verification-reader-expansion.md) を参照してください。
+
+## キャッチアップと記事履歴（schema v10）
+
+v10 は記事の観測した版・関連索引・関心設定・確認状態と、収集の継続位置／再試行期限を追加します。認識済み v9 は更新前に `feeder.v9-backup.sqlite3` へ退避します。過去の本文履歴は捏造せず、既存記事の既読・スター・訪問・順序・設定を保持します。
+
+配備前には Web/worker を停止し、`/data` 全体の整合バックアップと旧イメージを保持してください。v9 バイナリへ戻す場合は、v10 DB を開かせず更新直前のバックアップを別の復旧用 volume に復元します。v10 で追加された関心・確認・履歴も、通常の完全DB／volumeバックアップに含まれます。設定JSON／OPMLのエクスポートだけでは復旧できません。
+
+[合成データによる検証記録](verification-reader-catchup.md)と[キャッチアップの仕様](reader-catchup.md)を参照してください。

@@ -60,6 +60,9 @@ jobs:
       - name: Reader expansion acceptance with isolated synthetic database
         run: node scripts/reader-expansion-browser-smoke.mjs
 
+      - name: Reader catch-up acceptance with isolated synthetic database
+        run: node scripts/reader-catchup-browser-smoke.mjs
+
   migration-tools:
     runs-on: ubuntu-latest
     steps:

@@ -52,6 +52,13 @@ try:
     assert request('/api/v1/articles',headers={'Authorization':'Bearer '+canaries[0]})[0]==401
     export_status,export_body=request('/api/configuration/export','POST',{'presentation':{'appearance':'light','width':250,'layout':'standard','collapsed_folders':[]}})
     assert export_status==200
+    assert json.loads(export_body)['schema_version']==10
+    catchup=json.loads(request('/api/catchup?hours=24&limit=10')[1])
+    assert catchup['items']==[]  # Demo/legacy rows are not fabricated new arrivals.
+    interests=json.loads(request('/api/catchup/interests')[1])
+    assert request('/api/catchup/interests','PUT',{**interests,'terms':['Synthetic Rust']})[0]==200
+    assert request(f'/api/articles/{article_id}/related-exclusion','PUT',{'excluded':True})[0]==200
+    assert json.loads(request(f'/api/articles/{article_id}/revisions')[1])['items']==[]
     ui=request('/')[1]
     script_path=re.search(rb'src="([^"]+\.js)"',ui).group(1).decode()
     js=request(script_path)[1]
@@ -93,6 +100,9 @@ try:
     reader_settings_snapshot=json.loads(request('/api/reader/settings')[1])
     library_snapshot=json.loads(request('/api/library')[1])
     history_snapshot=json.loads(request('/api/articles?history=true&order=recent&limit=100')[1])
+    interests_snapshot=json.loads(request('/api/catchup/interests')[1])
+    related_snapshot=json.loads(request(f'/api/articles/{article_id}/related')[1])
+    assert related_snapshot['excluded']
     cmd('stop','--timeout','30')
     backup=subprocess.check_output([*compose,'run','--rm','--no-deps','-T','--entrypoint','tar','web','-C','/data','-czf','-','.'],cwd=root,env=env)
     with tarfile.open(fileobj=io.BytesIO(backup),mode='r:gz') as archive:
@@ -108,6 +118,8 @@ try:
     assert json.loads(request('/api/keys')[1])==api_keys_snapshot
     assert json.loads(request('/api/keys/settings')[1])==api_rate_snapshot
     assert json.loads(request('/api/collection/settings')[1])==collection_settings_snapshot
+    assert json.loads(request('/api/catchup/interests')[1])==interests_snapshot
+    assert json.loads(request(f'/api/articles/{article_id}/related')[1])==related_snapshot
     subprocess.run([*restore_compose,'down','--volumes','--remove-orphans','--timeout','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
     restore_created=False
     cmd('up','--no-build','-d','--force-recreate','--wait','--wait-timeout','90','web','worker')
@@ -120,6 +132,8 @@ try:
     assert json.loads(request('/api/keys')[1])==api_keys_snapshot
     assert json.loads(request('/api/keys/settings')[1])==api_rate_snapshot
     status,body=request('/api/collection/settings');assert status==200 and json.loads(body)==collection_settings_snapshot
+    assert json.loads(request('/api/catchup/interests')[1])==interests_snapshot
+    assert json.loads(request(f'/api/articles/{article_id}/related')[1])==related_snapshot
     cmd('stop','--timeout','30','worker')
     worker_id=cmd('ps','--all','--quiet','worker')
     info=json.loads(subprocess.check_output(['docker','inspect',worker_id],text=True))[0]

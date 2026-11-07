@@ -76,3 +76,14 @@ Session-protected `GET /api/keys` returns `{keys:[safe metadata...]}`. `POST /ap
 `/api/v1` requires a separate Bearer key, supports the coreRSS/article endpoints and ID pagination documented in [API access](api-access-control.md), and never substitutes a browser session for authentication. Permission, expiration/revocation and rate counters are checked in an immediate transaction. Error codes are numeric. Public API operations do not create reader visits. Unmigrated source-specific settings fail explicitly.
 
 Configuration export now reports the actual schema version and `settings.api.rate_limit`; no key metadata, hashes, counters or tokens are included. Recognized v6 DBs retain a `.v6-backup.sqlite3` before migration.
+
+## Reader catch-up (schema v10)
+
+Internal browser endpoints add a bounded 24-hour/7-day catch-up queue, revision-checked shared interests and independent per-version acknowledgement/undo. Article responses add nullable `revision`, `content_fingerprint`, `changed_at`, and boolean `has_update`. Reading-state writes retain their existing semantics.
+
+- [Catch-up selection and endpoints](reader-catchup.md)
+- [Observed article revision history](article-revisions.md)
+- [Conservative related articles and exclusion](story-groups.md)
+- [Collection pagination, retry and coverage](collection-reliability.md)
+
+All new writes use the existing browser session/Origin/CSRF boundary; a public API bearer token alone cannot authorize them. The v1 public API routes retain their existing contract. Upgrade is additive, preserves known v9 cells, and keeps a pre-upgrade SQLite backup. Full database backups include the new state; configuration export remains an allowlisted settings export, not a data backup.
