@@ -1,0 +1,2 @@
+## Design
+Standard remains a readable summary. Line mode presents source, title and absolute timestamp in one clipped row with accessible full text. Tile mode uses two columns on typical phone widths, adapting at extremely narrow widths. Preserve selection, read, star and saved actions with touch targets. Use quiet neutral surfaces and one accessible accent; preserve light, dark and system settings. Existing Web reader and CSS are the implementation baseline.

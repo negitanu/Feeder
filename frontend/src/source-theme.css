@@ -1,7 +1,7 @@
 /* Adapted from FeedAstrolabe tokens.css, reader.css and navigation.css. */
-:root{color-scheme:light;--bg:#f7f8f9;--surface:#fff;--text:#24333b;--muted:#586b73;--line:#dbe2e4;--accent:#11776d;--accent-soft:#eaf5f1;--surface-soft:#f0f3f3;--on-accent:#fff;--shadow:0 4px 18px #24333b08}
-:root[data-theme=dark]{--bg:#12191e;--surface:#1b252c;--text:#edf3f6;--muted:#a7bac4;--line:#43545f;--accent:#74dbcb;--accent-soft:#203d3b;--surface-soft:#29363e;--on-accent:#062c28;--shadow:0 4px 18px #0003}
-@media(prefers-color-scheme:dark){:root[data-theme=system]{--bg:#12191e;--surface:#1b252c;--text:#edf3f6;--muted:#a7bac4;--line:#43545f;--accent:#74dbcb;--accent-soft:#203d3b;--surface-soft:#29363e;--on-accent:#062c28;--shadow:0 4px 18px #0003}}
+:root{color-scheme:light;--bg:#f7f7f6;--surface:#fff;--text:#262827;--muted:#555b59;--line:#d4d8d6;--accent:#496975;--accent-soft:#e8eff0;--surface-soft:#eeeeec;--on-accent:#fff;--shadow:0 4px 18px #26282708}
+:root[data-theme=dark]{--bg:#171918;--surface:#222523;--text:#eef0ee;--muted:#b7bfbb;--line:#4b524e;--accent:#a9c8d0;--accent-soft:#293b3e;--surface-soft:#303531;--on-accent:#122326;--shadow:0 4px 18px #0003}
+@media(prefers-color-scheme:dark){:root[data-theme=system]{--bg:#171918;--surface:#222523;--text:#eef0ee;--muted:#b7bfbb;--line:#4b524e;--accent:#a9c8d0;--accent-soft:#293b3e;--surface-soft:#303531;--on-accent:#122326;--shadow:0 4px 18px #0003}}
 .topbar{padding:10px 28px;gap:20px;min-height:64px;height:auto;flex-wrap:wrap}
 .brand{width:auto;min-width:160px;color:var(--accent);font-size:18px;letter-spacing:0}
 .brand-mark{width:24px;height:24px;background:none;border-radius:0}

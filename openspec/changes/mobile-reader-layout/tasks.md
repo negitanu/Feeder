@@ -1,0 +1,4 @@
+- [x] Define requirements and design before changes
+- [x] Fix responsive line and tile layouts
+- [x] Refine theme and UI with unslop
+- [x] Verify desktop and mobile layouts, themes and interactions

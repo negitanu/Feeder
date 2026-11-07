@@ -1,13 +1,13 @@
 /* Feeder craft pass. Guided by unslop, Damir Sokolovsky (@heydamir), CC BY 4.0.
    https://heydamir.design/unslop — existing FeedAstrolabe brand retained. */
 :root{
-  --secondary:#526169;--muted:#63727a;--line:#dfe5e7;
-  --surface-soft:#f1f4f4;--shadow:0 8px 24px #15232b12;
+  --secondary:#505754;--muted:#5a625e;--line:#d4d8d6;
+  --surface-soft:#eeeeec;--shadow:0 8px 24px #20252212;
   --radius-control:8px;--ease:cubic-bezier(.22,1,.36,1);
   font-size:14px;font-weight:400;letter-spacing:0;
 }
-:root[data-theme=dark]{--secondary:#bcc8cf;--muted:#a3b2ba;--line:#34424b;--shadow:0 8px 24px #0003}
-@media(prefers-color-scheme:dark){:root[data-theme=system]{--secondary:#bcc8cf;--muted:#a3b2ba;--line:#34424b;--shadow:0 8px 24px #0003}}
+:root[data-theme=dark]{--secondary:#c3cbc6;--muted:#b7bfbb;--line:#4b524e;--shadow:0 8px 24px #0003}
+@media(prefers-color-scheme:dark){:root[data-theme=system]{--secondary:#c3cbc6;--muted:#b7bfbb;--line:#4b524e;--shadow:0 8px 24px #0003}}
 button,input,select,textarea{font-family:inherit;font-size:13px;line-height:20px}
 button{font-weight:500;min-height:36px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;transition:color .16s var(--ease),background-color .16s var(--ease),border-color .16s var(--ease)}
 button:disabled{cursor:default}

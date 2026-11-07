@@ -10,3 +10,5 @@ import { applyReadability } from './ReadabilityPanel'
 applyReadability()
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>)
+
+import './mobile-reader.css'
