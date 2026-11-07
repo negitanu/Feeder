@@ -21,3 +21,10 @@ Feeder SHALL expose last check, last success, errors, consecutive failures, effe
 #### Scenario: Never checked subscription
 - **WHEN** collection is enabled and a subscription has never been checked
 - **THEN** it is immediately due and success remains unknown
+
+### Requirement: Contained narrow-screen diagnostics
+The collection diagnostics table SHALL scroll within its own region on narrow screens, including visually hidden accessibility labels, without widening the entire page.
+
+#### Scenario: Diagnostics after OPML import
+- **WHEN** a populated diagnostics table is displayed on a 390px viewport
+- **THEN** the table can scroll horizontally while the document width remains within the viewport

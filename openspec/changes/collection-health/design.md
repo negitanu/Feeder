@@ -19,3 +19,5 @@ The handler locks the shared connection only to execute SELECT statements; no tr
 ## Verification
 
 Use in-memory synthetic SQLite fixtures for migration shape, legacy-success seeding, foreign-key cascade, repeated success/failure transitions, legacy fallback rules, scheduling null cases, stale rules and 1000-row truncation. A full backend test run and frontend production build are recorded separately from browser interaction/accessibility verification; no browser run is claimed by this change.
+
+The horizontal table scroll container establishes a positioned containing block, so absolute visually hidden column labels remain inside the same clipping region rather than contributing overflow to the document.
