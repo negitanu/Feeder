@@ -1,6 +1,7 @@
 mod auth;
 mod collection;
 mod discovery;
+mod hero;
 mod opml;
 mod public_api;
 mod reader;
@@ -35,6 +36,7 @@ struct Article {
     is_read: bool,
     is_starred: bool,
     last_visited: Option<String>,
+    image_url: Option<String>,
 }
 fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
     Ok(Article {
@@ -46,6 +48,7 @@ fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
         is_read: row.get(5)?,
         is_starred: row.get(6)?,
         last_visited: row.get(7)?,
+        image_url: hero::candidate(row.get(0)?, &row.get::<_, String>(3)?),
     })
 }
 
@@ -262,6 +265,7 @@ fn base_router(db: Db) -> Router {
         .route("/api/articles/read-all", post(reader::read_all))
         .route("/api/articles/bulk-state", post(reader::bulk_state))
         .route("/api/articles/{id}/visit", post(reader::visit))
+        .route("/api/articles/{id}/hero", get(hero::get))
         .route("/api/articles/{id}", get(detail))
         .route("/api/articles/{id}/state", post(update))
         .fallback_service(ServeDir::new("frontend/dist").append_index_html_on_directories(true))
@@ -342,6 +346,57 @@ mod tests {
         http::Request,
     };
     use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn hero_contract_and_private_target_preserve_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        db.lock().unwrap().execute("INSERT INTO articles(id,title,content,url,published) VALUES (1,'title','body','http://127.0.0.1/private','')", []).unwrap();
+        let router = app(db.clone(), "127.0.0.1:8080".parse().unwrap());
+        for (method, path) in [
+            ("GET", "/api/articles/1"),
+            ("POST", "/api/articles/1/visit"),
+        ] {
+            let result = router
+                .clone()
+                .oneshot(request(method, path, None, ""))
+                .await
+                .unwrap();
+            let json: serde_json::Value =
+                serde_json::from_slice(&to_bytes(result.into_body(), 8192).await.unwrap()).unwrap();
+            assert_eq!(json["image_url"], "/api/articles/1/hero");
+        }
+        let before: (bool, i64) = db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT is_read,(SELECT count(*) FROM article_visits) FROM articles WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        let result = router
+            .clone()
+            .oneshot(request("GET", "/api/articles/1/hero", None, ""))
+            .await
+            .unwrap();
+        assert_eq!(result.status(), StatusCode::NOT_FOUND);
+        let after: (bool, i64) = db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT is_read,(SELECT count(*) FROM article_visits) FROM articles WHERE id=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(before, after);
+        let result = router
+            .oneshot(request("GET", "/api/articles/999/hero", None, ""))
+            .await
+            .unwrap();
+        assert_eq!(result.status(), StatusCode::NOT_FOUND);
+    }
 
     #[tokio::test]
     async fn explicit_hosts_and_origins() {

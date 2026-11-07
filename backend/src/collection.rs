@@ -616,6 +616,7 @@ pub(super) async fn fetch(
 }
 pub(super) struct ResponseBody {
     pub final_url: Url,
+    pub content_type: Option<String>,
     pub body: Option<Vec<u8>>,
     pub etag: Option<String>,
     pub modified: Option<String>,
@@ -723,6 +724,7 @@ async fn fetch_body_inner(
         if response.status() == reqwest::StatusCode::NOT_MODIFIED {
             return Ok(ResponseBody {
                 final_url: url,
+                content_type: None,
                 body: None,
                 etag: None,
                 modified: None,
@@ -737,6 +739,11 @@ async fn fetch_body_inner(
         {
             return Err(StatusCode::PAYLOAD_TOO_LARGE);
         }
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
         let etag = response
             .headers()
             .get(reqwest::header::ETAG)
@@ -758,6 +765,7 @@ async fn fetch_body_inner(
         }
         return Ok(ResponseBody {
             final_url: url,
+            content_type,
             body: Some(body),
             etag,
             modified,

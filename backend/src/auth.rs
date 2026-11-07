@@ -273,7 +273,11 @@ pub fn wrap(
                         return StatusCode::FORBIDDEN.into_response();
                     }
                     let session = access.session(req.headers());
-                    if (admin || unsafe_method) && session.is_none() {
+                    if (admin
+                        || unsafe_method
+                        || (path.starts_with("/api/articles/") && path.ends_with("/hero")))
+                        && session.is_none()
+                    {
                         return StatusCode::FORBIDDEN.into_response();
                     }
                     if unsafe_method
@@ -1082,6 +1086,23 @@ mod tests {
             access.clone(),
             bind,
             None,
+        );
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(request(
+                    "GET",
+                    "/api/articles/1/hero",
+                    "feed.example",
+                    None,
+                    None,
+                    Some("https://feed.example"),
+                    ""
+                ))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
         );
         let mut spoof = request(
             "GET",
