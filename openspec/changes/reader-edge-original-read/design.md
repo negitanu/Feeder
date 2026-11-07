@@ -1,0 +1,2 @@
+## Design
+Remove viewport-center-based right offsets; right is zero at all sizes and width stays within viewport. Use the existing updateState path for read reconciliation and unread count refresh. Guard duplicate middle-click mutations per article while pending and share removal bookkeeping with detail visits. Keep synchronous isolated tab opening to preserve browser user activation. Unsafe originals cause no tab or mutation. Star/history remain unchanged.

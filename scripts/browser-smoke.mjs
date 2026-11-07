@@ -14,11 +14,12 @@ try {
   await page.goto(origin);
   await page.locator('.article-card').first().waitFor();
   const snapshot=async path=>await(await page.request.get(origin+path)).json();
+  const middleId=await page.locator('.article-open').first().getAttribute('data-article-id');
   const beforeMiddle=await snapshot('/api/articles?limit=100'), historyBeforeMiddle=await snapshot('/api/articles?history=true&limit=100');
   await page.locator('.article-open').first().click({button:'middle'});
   assert.equal(await page.evaluate(()=>window.__originalOpens.length),1);
   assert.deepEqual((await page.evaluate(()=>window.__originalOpens[0])).slice(1),['_blank','noopener,noreferrer']);
-  assert.deepEqual(await snapshot('/api/articles?limit=100'),beforeMiddle);assert.deepEqual(await snapshot('/api/articles?history=true&limit=100'),historyBeforeMiddle);
+  await page.waitForFunction(id=>document.querySelector(`[data-article-id="${id}"]`)?.closest('.article-card')?.classList.contains('read'),middleId);assert.deepEqual(await snapshot('/api/articles?limit=100'),{...beforeMiddle,items:beforeMiddle.items.map(item=>String(item.id)===middleId?{...item,is_read:true}:item)});assert.deepEqual(await snapshot('/api/articles?history=true&limit=100'),historyBeforeMiddle);
   assert.equal(await page.locator('.article-detail').count(),0);
   if (process.env.FEEDER_SCREENSHOT) await page.screenshot({ path: process.env.FEEDER_SCREENSHOT, fullPage: false });
   const firstTitle = await page.locator('.article-card strong').first().innerText();
@@ -40,7 +41,7 @@ try {
   await page.locator('.load-sentinel').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelectorAll('.article-card').length === 36);
   const beforeAppended=await snapshot('/api/articles?limit=100'),historyBeforeAppended=await snapshot('/api/articles?history=true&limit=100');
-  await page.locator('.article-open').last().click({button:'middle'});assert.equal(await page.evaluate(()=>window.__originalOpens.length),2);assert.deepEqual(await snapshot('/api/articles?limit=100'),beforeAppended);assert.deepEqual(await snapshot('/api/articles?history=true&limit=100'),historyBeforeAppended);
+  const appendedId=await page.locator('.article-open').last().getAttribute('data-article-id');await page.locator('.article-open').last().click({button:'middle'});assert.equal(await page.evaluate(()=>window.__originalOpens.length),2);await page.waitForFunction(id=>document.querySelector(`[data-article-id="${id}"]`)?.closest('.article-card')?.classList.contains('read'),appendedId);assert.deepEqual(await snapshot('/api/articles?limit=100'),{...beforeAppended,items:beforeAppended.items.map(item=>String(item.id)===appendedId?{...item,is_read:true}:item)});assert.deepEqual(await snapshot('/api/articles?history=true&limit=100'),historyBeforeAppended);
   await page.getByRole('combobox', { name: 'テーマ' }).selectOption('dark');
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
   await page.reload();

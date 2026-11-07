@@ -1,14 +1,14 @@
 ## Purpose
 
-Open safe original article URLs without unintended reading-state changes.
+Open safe original article URLs and mark explicitly opened originals as read.
 
 ## Requirements
 
-### Requirement: Open the original without marking read
-The reader SHALL allow a middle click on a card with a valid HTTP(S) original to open it separately without selecting the article, changing read/star state or recording a visit.
+### Requirement: Open the original and mark read
+The reader SHALL allow a middle click on a card with a valid HTTP(S) original to open it separately without selecting the detail, changing star state or recording a detail visit, while marking the article read.
 #### Scenario: Middle click a card
 - **WHEN** a reader middle-clicks an initial or appended card with a valid original URL
-- **THEN** a new isolated tab opens and the reader state and visit history remain unchanged
+- **THEN** a new isolated tab opens and successful read changes are reflected while star state and detail visit history remain unchanged
 #### Scenario: Unsafe original
 - **WHEN** an article has an empty, malformed or non-HTTP(S) original URL
 - **THEN** middle-click opens no tab and causes no mutation

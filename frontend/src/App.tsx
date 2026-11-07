@@ -86,6 +86,7 @@ function App() {
   const navigationFocus = useRef<'previous' | 'next' | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const visitRemovals = useRef(new Set<number>())
+  const originalReadPending = useRef(new Set<number>())
   const sentinel = useRef<HTMLDivElement>(null)
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: String(PAGE_SIZE), pagination: 'cursor' })
@@ -264,9 +265,14 @@ function App() {
       const was = eligible(article), now = eligible(updated)
       if (now) visitRemovals.current.delete(updated.id)
       setItems(current => now ? ordered(current.some(item => item.id === updated.id) ? current.map(item => item.id === updated.id ? updated : item) : [...current,updated]) : current.filter(item => item.id !== updated.id))
-      if (was !== now) setTotal(value => Math.max(0,value+(now ? 1 : -1)))
+      if (was !== now) { if (now) setTotal(value => value + 1); else if (!visitRemovals.current.has(updated.id)) { visitRemovals.current.add(updated.id); setTotal(value => Math.max(0,value - 1)) } }
       if (!now) setSelectedIds(current => current.filter(id => id !== updated.id))
     } catch (e) { if (filtersKeyRef.current === key) setError((e as Error).message) }
+  }
+  async function markOriginalRead(article: Article) {
+    if (article.is_read || originalReadPending.current.has(article.id)) return
+    originalReadPending.current.add(article.id)
+    try { await updateState(article, { read: true }) } finally { originalReadPending.current.delete(article.id) }
   }
   async function openArticle(article: Article, navigation?: 'previous' | 'next') {
     if (navigation) navigationFocus.current = navigation
@@ -388,7 +394,7 @@ function App() {
           <div className={`article-list layout-${layout}`} data-layout={layout} aria-label="記事一覧" aria-busy={loading}>
             {loading ? <div className="empty-state"><span className="spinner" />記事を読み込んでいます...</div> : items.length === 0 ? <div className="empty-state"><span className="empty-icon"><Inbox className="ui-icon" aria-hidden="true" /></span><strong>{error ? '読み込みに失敗しました' : '記事がありません'}</strong><span>{error ? '接続を確認して、再試行してください。' : '条件に合う記事が見つかりませんでした。'}</span></div> : items.map(article => <article key={article.id} className={`article-card ${article.is_read ? 'read' : ''}`}>
               <input className="article-select" disabled={bulkBusy} aria-label={`記事を選択: ${article.title}`} type="checkbox" checked={selectedIds.includes(article.id)} onChange={e => setSelectedIds(current => e.target.checked ? current.length < 100 ? [...current, article.id] : current : current.filter(id => id !== article.id))} />
-              <button className="article-open" data-article-id={article.id} onClick={() => void openArticle(article)} onAuxClick={e => { if (e.button !== 1) return; e.preventDefault(); const url = originalUrl(article.url); if (url) window.open(url, '_blank', 'noopener,noreferrer') }}><span className="unread-mark" aria-hidden="true" /><span className="card-copy"><span className="card-meta"><time dateTime={article.published}>{date(article.published)}</time><span className="meta-separator">·</span><span className="source">{(() => { try { return new URL(article.url).hostname.replace(/^www\./, '') } catch { return '記事' } })()}</span></span><strong>{article.title}</strong><span className="excerpt">{article.content.slice(0, 180)}{article.content.length > 180 ? '…' : ''}</span></span></button>
+              <button className="article-open" data-article-id={article.id} onClick={() => void openArticle(article)} onAuxClick={e => { if (e.button !== 1) return; e.preventDefault(); const url = originalUrl(article.url); if (url) { window.open(url, '_blank', 'noopener,noreferrer'); void markOriginalRead(article) } }}><span className="unread-mark" aria-hidden="true" /><span className="card-copy"><span className="card-meta"><time dateTime={article.published}>{date(article.published)}</time><span className="meta-separator">·</span><span className="source">{(() => { try { return new URL(article.url).hostname.replace(/^www\./, '') } catch { return '記事' } })()}</span></span><strong>{article.title}</strong><span className="excerpt">{article.content.slice(0, 180)}{article.content.length > 180 ? '…' : ''}</span></span></button>
               <button className={`icon-button card-star ${article.is_starred ? 'is-starred' : ''}`} aria-label={article.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={article.is_starred} onClick={() => void updateState(article, { starred: !article.is_starred })}><Star className="ui-icon" aria-hidden="true" fill={article.is_starred ? 'currentColor' : 'none'} /></button>
             </article>)}
             <div ref={sentinel} className="load-sentinel" aria-hidden="true" />
