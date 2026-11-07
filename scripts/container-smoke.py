@@ -86,6 +86,7 @@ try:
     if env.get('FEEDER_DETAIL_LAYOUT_SMOKE')=='1':
         subprocess.run(['node','scripts/detail-layout-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
         subprocess.run(['node','scripts/middle-read-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
+        subprocess.run(['node','scripts/reader-history-browser-smoke.mjs'],cwd=root,env=dict(env,FEEDER_URL=f'http://127.0.0.1:{port}'),check=True)
     collection_settings_snapshot=json.loads(request('/api/collection/settings')[1])
     api_keys_snapshot=json.loads(request('/api/keys')[1])
     api_rate_snapshot=json.loads(request('/api/keys/settings')[1])

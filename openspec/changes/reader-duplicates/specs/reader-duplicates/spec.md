@@ -14,3 +14,7 @@ The API SHALL scan at most 1000 articles and expose whether more articles exist;
 - **THEN** the API and interface indicate that older articles are excluded.
 ### Requirement: Explicit original actions
 The optional view SHALL show every original in a displayed group and allow opening or marking an individual original read without modifying other copies; users SHALL be able to return to the normal view.
+
+#### Scenario: Individual read action
+- **WHEN** a reader marks one original read in a duplicate group
+- **THEN** only that original changes and other originals retain their read and star states

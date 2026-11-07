@@ -1,3 +1,6 @@
+## Purpose
+Make article lists easy to scan by showing the subscribed Feed, title and absolute publication time in the configured timezone.
+
 ## Requirements
 ### Requirement: Article row source, title, and absolute time
 The Reader SHALL present each article's source, title, and absolute publication time in that order.

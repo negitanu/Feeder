@@ -27,6 +27,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+      - run: node tests/article-row-time.test.mjs
   integration:
     runs-on: ubuntu-latest
     steps:
@@ -50,10 +51,14 @@ jobs:
           done
           node scripts/browser-smoke.mjs
           node scripts/detail-browser-smoke.mjs
+          FEEDER_URL=http://127.0.0.1:8080 node scripts/reader-history-browser-smoke.mjs
           python3 tests/seed_collection_fixture.py "$RUNNER_TEMP/feeder-smoke.sqlite3"
           node scripts/collection-browser-smoke.mjs
           node scripts/onboarding-browser-smoke.mjs
           FEEDER_DB="$RUNNER_TEMP/feeder-smoke.sqlite3" backend/target/debug/feeder worker --once
+
+      - name: Reader expansion acceptance with isolated synthetic database
+        run: node scripts/reader-expansion-browser-smoke.mjs
 
   migration-tools:
     runs-on: ubuntu-latest
