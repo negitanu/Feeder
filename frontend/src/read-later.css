@@ -1,0 +1,11 @@
+.read-later-panel { padding: 1.5rem; max-width: 60rem; }
+.read-later-setting { display: flex; gap: .6rem; align-items: center; margin: 1rem 0; }
+.read-later-list { padding: 0; list-style: none; }
+.read-later-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; padding: .8rem 0; border-bottom: 1px solid var(--border, #8886); }
+.read-later-open { text-align: left; flex: 1 1 15rem; }
+.read-later-button-wrap { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.read-later-button { min-height: 2.5rem; }
+.read-later-error { color: var(--danger, #b42318); }
+
+.read-later-button-compact { width: 2.75rem; min-width: 2.75rem; padding: .5rem; display: inline-flex; align-items: center; justify-content: center; }
+.read-later-button-compact[aria-pressed="true"] { color: var(--accent, currentColor); }

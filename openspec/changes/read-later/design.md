@@ -1,0 +1,5 @@
+## Storage and integration
+`article_read_later(article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE, saved_at TEXT NOT NULL)` stores the queue; the implementation uses `ON DELETE CASCADE`. A singleton `read_later_settings` persists `auto_remove`, initially false. The application calls `migrate` in its existing migration transaction, mounts `routes`, and invokes `on_visit` only upon actual navigation to an article. The hook accepts a connection so callers may supply a transaction via dereference. Backup and restore use the existing database mechanism.
+
+## API and UI
+GET `/api/read-later` returns at most 100 rows as `{items:[{id,title,url,published,saved_at}]}`, ordered by saved time then ID descending. POST `/api/articles/{id}/read-later` accepts and returns `{saved:boolean}`; missing IDs return 404. GET and PATCH `/api/read-later/settings` return and accept `{auto_remove:boolean}`. Writes use existing authentication and CSRF handling. The panel opens items through `onOpen(id)` and offers explicit removal and the setting; the parent handles navigation and state refresh.
