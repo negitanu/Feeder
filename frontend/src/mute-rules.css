@@ -1,0 +1,12 @@
+.mute-rules { display: grid; gap: .75rem; }
+.mute-rules h2, .mute-rules p { margin: 0; }
+.mute-rules form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.mute-rules form label:not(.mute-rules-check) { display: grid; gap: .25rem; flex: 1 1 12rem; }
+.mute-rules input:not([type="checkbox"]), .mute-rules select { min-width: 0; width: 100%; }
+.mute-rules-check { display: flex; align-items: center; gap: .4rem; min-height: 2.5rem; }
+.mute-rules-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.mute-rules ul { list-style: none; padding: 0; margin: 0; }
+.mute-rules li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; padding: .75rem 0; border-bottom: 1px solid currentColor; }
+.mute-rules li p { margin-top: .25rem; }
+.mute-rules-term { overflow-wrap: anywhere; }
+.mute-rules-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
