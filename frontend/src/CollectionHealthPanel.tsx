@@ -15,6 +15,10 @@ type HealthFeed = {
   stale: boolean
   individual_override: boolean
   poll_interval_seconds: number | null
+  collection_state: 'paused' | 'waiting' | 'error' | 'catching_up' | 'uncollected' | 'idle'
+  next_retry: string | null
+  more_pending: boolean
+  gap_possible: boolean
 }
 type HealthResponse = {
   global_enabled: boolean
@@ -76,10 +80,10 @@ export default function CollectionHealthPanel({ onRetry, refreshKey = 0, timezon
       {visible.length === 0 ? <p className="collection-health-state">該当するフィードはありません。</p> : <div className="collection-health-scroll"><table><thead><tr><th scope="col">フィード</th><th scope="col">状態</th><th scope="col">最終確認</th><th scope="col">最終成功</th><th scope="col">次回予定</th><th scope="col">間隔</th><th scope="col"><span className="sr-only">操作</span></th></tr></thead>
         <tbody>{visible.map(feed => <tr key={feed.id} className={feed.error || feed.consecutive_failures ? 'has-error' : feed.stale ? 'is-stale' : ''}>
           <th scope="row"><span className="collection-health-name">{feed.name}</span><a href={feed.url} title={feed.url}>{feed.url}</a></th>
-          <td>{feed.paused ? '停止中' : <span className="collection-health-status">{feed.error && <span>{feed.error}</span>}{feed.consecutive_failures > 0 && <span>連続失敗 {feed.consecutive_failures} 回</span>}{!feed.error && feed.consecutive_failures === 0 && <span>{feed.stale ? '古い' : '正常'}</span>}</span>}</td>
+          <td>{feed.paused ? '停止中' : <span className="collection-health-status">{feed.error && <span>{feed.error}</span>}{feed.collection_state === 'uncollected' && <span>未収集</span>}{feed.collection_state === 'waiting' && <span>待機中（再試行 {absoluteTime(feed.next_retry, timezone)} 以降）</span>}{feed.more_pending && <span>続きを取得予定</span>}{feed.gap_possible && <span>取得漏れの可能性があります</span>}{feed.consecutive_failures > 0 && <span>連続失敗 {feed.consecutive_failures} 回</span>}{!feed.error && feed.consecutive_failures === 0 && feed.collection_state !== 'waiting' && feed.collection_state !== 'uncollected' && !feed.more_pending && <span>{feed.stale ? '古い' : '正常'}</span>}</span>}</td>
           <td>{absoluteTime(feed.last_checked, timezone)}</td><td>{absoluteTime(feed.last_success, timezone)}</td><td>{absoluteTime(feed.next_due, timezone)}</td>
           <td>{feed.individual_override ? `${feed.poll_interval_seconds} 秒（個別）` : `${data.global_interval_seconds} 秒`}</td>
-          <td><button type="button" disabled={feed.paused || retrying !== null} onClick={() => void retry(feed.id)}>{retrying === feed.id ? '再試行中…' : '再試行'}</button></td>
+          <td><button type="button" disabled={feed.paused || feed.collection_state === 'waiting' || retrying !== null} onClick={() => void retry(feed.id)}>{retrying === feed.id ? '再試行中…' : '再試行'}</button></td>
         </tr>)}</tbody></table></div>}
     </>}
   </section>
