@@ -1,0 +1,4 @@
+## Design
+Canonicalize absolute HTTP(S) URLs with the URL parser, dropping fragments and query parameters named utm_* (case insensitive), fbclid or gclid. Preserve remaining query pairs and their order. Invalid and non-HTTP(S) URLs do not group. Do not change stored URLs. Scan the newest 1000 article IDs plus one sentinel, then group within that scan; report scanned count and truncation explicitly. Sort groups deterministically by newest article ID and paginate groups (limit 1–50). Counts describe the scan, never the whole database. Each member includes feed ID/title, article title, original URL, read and star states. Reads and opening an original remain explicit per article. No schema objects are needed; migration is a no-op.
+## Existing Web correspondence
+Articles and feeds come from the existing collection schema; independent states are the existing articles.is_read/is_starred fields. apiFetch provides session handling. App integration is owned separately.
