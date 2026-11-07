@@ -1,5 +1,5 @@
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 const TABLE: &str = "CREATE TABLE collection_health (feed_id INTEGER PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE, last_success TEXT, consecutive_failures INTEGER NOT NULL DEFAULT 0)";
@@ -44,6 +44,10 @@ struct FeedHealth {
     stale: bool,
     individual_override: bool,
     poll_interval_seconds: Option<i64>,
+    collection_state: &'static str,
+    next_retry: Option<String>,
+    more_pending: bool,
+    gap_possible: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,8 +80,39 @@ fn read_health(db: &Connection) -> rusqlite::Result<HealthResponse> {
          ORDER BY f.id LIMIT 1001"#,
     )?;
     let mut rows = stmt.query(params![global_enabled, global_interval_seconds])?;
+    let runtime_exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_runtime')", [], |r| r.get(0))?;
     let mut feeds = Vec::new();
     while let Some(row) = rows.next()? {
+        let id: i64 = row.get(0)?;
+        let paused: bool = row.get(3)?;
+        let (next_retry, waiting, more_pending, gap_possible): (Option<String>, bool, bool, bool) =
+            if runtime_exists {
+                db.query_row("SELECT datetime(next_retry,'unixepoch'),COALESCE(next_retry>unixepoch(),0),more_pending,gap_possible FROM collection_runtime WHERE feed_id=?", [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?.unwrap_or((None,false,false,false))
+            } else {
+                (None, false, false, false)
+            };
+        let error: Option<String> = row.get(6)?;
+        let last_success: Option<String> = row.get(5)?;
+        let mut next_due: Option<String> = row.get(10)?;
+        if next_due.is_some() && more_pending {
+            next_due = Some(db.query_row("SELECT datetime('now')", [], |r| r.get(0))?);
+        }
+        if waiting && next_due.is_some() && next_retry > next_due {
+            next_due = next_retry.clone();
+        }
+        let state = if paused {
+            "paused"
+        } else if waiting {
+            "waiting"
+        } else if error.is_some() {
+            "error"
+        } else if more_pending {
+            "catching_up"
+        } else if last_success.is_none() {
+            "uncollected"
+        } else {
+            "idle"
+        };
         feeds.push(FeedHealth {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -89,8 +124,12 @@ fn read_health(db: &Connection) -> rusqlite::Result<HealthResponse> {
             consecutive_failures: row.get(7)?,
             individual_override: row.get(8)?,
             poll_interval_seconds: row.get(9)?,
-            next_due: row.get(10)?,
+            next_due,
             stale: row.get(11)?,
+            collection_state: state,
+            next_retry,
+            more_pending,
+            gap_possible,
         });
     }
     let truncated = feeds.len() > 1000;

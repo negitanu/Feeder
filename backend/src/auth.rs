@@ -1002,6 +1002,7 @@ mod tests {
             let db = db.lock().unwrap();
             db.execute("INSERT INTO api_keys(name,prefix,token_hash,scope,expires_at) VALUES('test','prefix',?,'write',datetime('now','+1 day'))", [hash("write-secret")]).unwrap();
             db.execute("INSERT INTO articles(id,title,content,url,published) VALUES(1,'Synthetic','body','https://example.invalid/article','2026-01-01')", []).unwrap();
+            db.execute("INSERT INTO article_revision_state(article_id,current_revision,fingerprint,first_seen_at,ingestion_kind) VALUES(1,1,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',datetime('now'),'normal')", []).unwrap();
         }
         let access = Access {
             mode: Mode::Local,
@@ -1043,6 +1044,10 @@ mod tests {
             "/api/read-later/settings",
             "/api/social/sources",
             "/api/collection/health",
+            "/api/catchup",
+            "/api/catchup/interests",
+            "/api/articles/1/revisions",
+            "/api/articles/1/related",
         ];
         for path in reads {
             let ok = router
@@ -1093,6 +1098,26 @@ mod tests {
                 r#"{"provider":"invalid","actor":"synthetic"}"#,
             ),
             ("DELETE", "/api/social/sources/999", ""),
+            (
+                "PUT",
+                "/api/catchup/interests",
+                r#"{"revision":1,"terms":[],"priority_feed_ids":[]}"#,
+            ),
+            (
+                "PUT",
+                "/api/catchup/acknowledgements",
+                r#"{"article_id":1,"revision":1,"fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","action":"confirmed"}"#,
+            ),
+            (
+                "DELETE",
+                "/api/catchup/acknowledgements",
+                r#"{"article_id":1,"revision":1,"fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#,
+            ),
+            (
+                "PUT",
+                "/api/articles/1/related-exclusion",
+                r#"{"excluded":true}"#,
+            ),
         ];
         for (method, path, body) in writes {
             let mut bearer = request(method, path, host, None, None, None, body);
@@ -1193,7 +1218,7 @@ mod tests {
         assert_eq!(
             db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            9
+            10
         );
         assert_eq!(
             db.query_row("SELECT title FROM articles", [], |r| r.get::<_, String>(0))

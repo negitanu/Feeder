@@ -603,6 +603,94 @@ pub(super) fn public_ip(ip: IpAddr) -> bool {
         }
     }
 }
+tokio::task_local! { static RETRY_HINT: std::cell::Cell<Option<i64>>; }
+
+fn record_retry_hint(status: StatusCode, headers: &HeaderMap, now: i64) {
+    if matches!(status.as_u16(), 429 | 503)
+        && let Some(value) = headers
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+        && let Some(deadline) = retry_after_deadline(value, now)
+    {
+        let _ = RETRY_HINT.try_with(|hint| hint.set(Some(deadline)));
+    }
+}
+
+fn retry_after_deadline(value: &str, now: i64) -> Option<i64> {
+    let value = value.trim();
+    if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) {
+        return Some(now.saturating_add(value.parse::<i64>().unwrap_or(i64::MAX)));
+    }
+    // Accept IMF-fixdate and the two obsolete HTTP-date forms required of recipients.
+    let parts: Vec<_> = value.split_ascii_whitespace().collect();
+    let db = Connection::open_in_memory().ok()?;
+    let (day_text, month_text, year, time_text) = match parts.as_slice() {
+        [weekday, day, month, year, time, "GMT"] if weekday.ends_with(',') => {
+            (*day, *month, year.parse::<i32>().ok()?, *time)
+        }
+        [weekday, date, time, "GMT"] if weekday.ends_with(',') => {
+            let date: Vec<_> = date.split('-').collect();
+            if date.len() != 3 || date[2].len() != 2 {
+                return None;
+            }
+            let short_year: i32 = date[2].parse().ok()?;
+            let current_year: i32 = db
+                .query_row(
+                    "SELECT CAST(strftime('%Y',?,'unixepoch') AS INTEGER)",
+                    [now],
+                    |r| r.get(0),
+                )
+                .ok()?;
+            let mut year = current_year / 100 * 100 + short_year;
+            if year > current_year + 50 {
+                year -= 100;
+            }
+            (date[0], date[1], year, *time)
+        }
+        [_weekday, month, day, time, year] => (*day, *month, year.parse::<i32>().ok()?, *time),
+        _ => return None,
+    };
+    let day: u32 = day_text.parse().ok()?;
+    let month = match month_text {
+        "Jan" => 1,
+        "Feb" => 2,
+        "Mar" => 3,
+        "Apr" => 4,
+        "May" => 5,
+        "Jun" => 6,
+        "Jul" => 7,
+        "Aug" => 8,
+        "Sep" => 9,
+        "Oct" => 10,
+        "Nov" => 11,
+        "Dec" => 12,
+        _ => return None,
+    };
+    let days = match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if !(1..=days).contains(&day) || !(1970..=9999).contains(&year) {
+        return None;
+    }
+    let t: Vec<_> = time_text.split(':').collect();
+    if t.len() != 3 {
+        return None;
+    }
+    let h: u32 = t[0].parse().ok()?;
+    let m: u32 = t[1].parse().ok()?;
+    let sec: u32 = t[2].parse().ok()?;
+    if h > 23 || m > 59 || sec > 59 {
+        return None;
+    }
+    let formatted = format!("{year:04}-{month:02}-{day:02} {h:02}:{m:02}:{sec:02}");
+    let deadline: Option<i64> = db
+        .query_row("SELECT unixepoch(?)", [formatted], |r| r.get(0))
+        .ok()?;
+    deadline.map(|d| d.max(now))
+}
 pub(super) struct Fetched {
     pub(super) parsed: Option<feed_rs::model::Feed>,
     pub(super) etag: Option<String>,
@@ -672,6 +760,28 @@ pub(super) fn parse_feed(body: &[u8], url: &Url) -> Result<feed_rs::model::Feed,
     }
     Ok(parsed)
 }
+async fn host_permit(host: &str) -> Result<tokio::sync::OwnedSemaphorePermit, StatusCode> {
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex, OnceLock, Weak},
+    };
+    static HOSTS: OnceLock<Mutex<HashMap<String, Weak<tokio::sync::Semaphore>>>> = OnceLock::new();
+    let semaphore = {
+        let mut hosts = HOSTS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .map_err(err)?;
+        hosts.retain(|_, value| value.strong_count() > 0);
+        if let Some(existing) = hosts.get(host).and_then(Weak::upgrade) {
+            existing
+        } else {
+            let value = Arc::new(tokio::sync::Semaphore::new(1));
+            hosts.insert(host.to_ascii_lowercase(), Arc::downgrade(&value));
+            value
+        }
+    };
+    semaphore.acquire_owned().await.map_err(err)
+}
 async fn fetch_body_inner(
     start: &str,
     etag: Option<&str>,
@@ -687,6 +797,9 @@ async fn fetch_body_inner(
             return Err(StatusCode::BAD_REQUEST);
         }
         let host = url.host_str().unwrap().trim_matches(['[', ']']).to_owned();
+        // A permit covers DNS, the request and response body, including each redirect hop.
+        // Weak references prevent the per-host registry from growing without bound.
+        let permit = host_permit(&host).await?;
         let port = url.port_or_known_default().ok_or(StatusCode::BAD_REQUEST)?;
         let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
             .await
@@ -722,6 +835,7 @@ async fn fetch_body_inner(
                 .ok_or(StatusCode::BAD_GATEWAY)?;
             url = url.join(location).map_err(|_| StatusCode::BAD_GATEWAY)?;
             url.set_fragment(None);
+            drop(permit);
             continue;
         }
         if response.status() == reqwest::StatusCode::NOT_MODIFIED {
@@ -734,6 +848,11 @@ async fn fetch_body_inner(
             });
         }
         if !response.status().is_success() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs().min(i64::MAX as u64) as i64)
+                .unwrap_or(0);
+            record_retry_hint(response.status(), response.headers(), now);
             return Err(StatusCode::BAD_GATEWAY);
         }
         if response
@@ -786,6 +905,7 @@ pub(super) fn store_entries(
     tx: &rusqlite::Transaction<'_>,
     id: i64,
     feed: &feed_rs::model::Feed,
+    context: super::collection_runtime::CollectionContext,
 ) -> rusqlite::Result<()> {
     for e in &feed.entries {
         let title = e
@@ -806,7 +926,18 @@ pub(super) fn store_entries(
             .or(e.updated)
             .map(|d| d.to_rfc3339())
             .unwrap_or_default();
-        tx.execute("INSERT INTO articles(feed_id,external_id,title,content,url,published) VALUES (?,?,?,?,?,?) ON CONFLICT(feed_id,external_id) DO UPDATE SET title=excluded.title,content=excluded.content,url=excluded.url,published=excluded.published",params![id,e.id,title,content,url,published])?;
+        let source_updated = e.updated.map(|date| date.to_rfc3339());
+        super::article_revisions::store_entry(
+            tx,
+            id,
+            &e.id,
+            &title,
+            &content,
+            url,
+            &published,
+            source_updated.as_deref(),
+            context,
+        )?;
     }
     Ok(())
 }
@@ -885,7 +1016,19 @@ async fn add_feed_impl(
     )
     .map_err(db_write_error)?;
     let id = tx.last_insert_rowid();
-    store_entries(&tx, id, &parsed).map_err(err)?;
+    store_entries(
+        &tx,
+        id,
+        &parsed,
+        super::collection_runtime::CollectionContext::InitialBackfill,
+    )
+    .map_err(err)?;
+    tx.execute(
+        "UPDATE feeds SET last_checked=datetime('now') WHERE id=?",
+        [id],
+    )
+    .map_err(err)?;
+    super::collection_health::record_attempt(&tx, id, true).map_err(err)?;
     tx.commit().map_err(err)?;
     get_feed(&db, id)
 }
@@ -901,7 +1044,7 @@ async fn refresh(
 }
 pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Feed, StatusCode> {
     let owner = super::discovery::random()?;
-    let (url, etag, modified, social) = {
+    let (url, etag, modified, social, checkpoint) = {
         let mut db = db.lock().map_err(err)?;
         let tx = db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -910,7 +1053,20 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
         if f.paused {
             return Err(StatusCode::CONFLICT);
         }
-        if scheduled && !tx.query_row("SELECT EXISTS(SELECT 1 FROM feeds f, collection_settings s WHERE f.id=? AND s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked)<=unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)))", [id], |r| r.get::<_, bool>(0)).map_err(err)? { return Err(StatusCode::CONFLICT); }
+        if runtime_table_exists(&tx).map_err(err)? && tx.query_row("SELECT EXISTS(SELECT 1 FROM collection_runtime WHERE feed_id=? AND next_retry>unixepoch())", [id], |r| r.get::<_,bool>(0)).map_err(err)? {
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+        if scheduled {
+            let pending = if runtime_table_exists(&tx).map_err(err)? {
+                tx.query_row("SELECT EXISTS(SELECT 1 FROM collection_runtime WHERE feed_id=? AND more_pending=1)", [id], |r| r.get::<_,bool>(0)).map_err(err)?
+            } else {
+                false
+            };
+            let due = tx.query_row("SELECT EXISTS(SELECT 1 FROM feeds f, collection_settings s WHERE f.id=? AND s.id=1 AND s.enabled=1 AND f.paused=0 AND (? OR f.last_checked IS NULL OR unixepoch(f.last_checked)<=unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)))", params![id,pending], |r| r.get::<_,bool>(0)).map_err(err)?;
+            if !due {
+                return Err(StatusCode::CONFLICT);
+            }
+        }
         let changed = tx.execute("INSERT INTO refresh_leases(feed_id,owner,expires_at) VALUES (?1,?2,unixepoch()+60) ON CONFLICT(feed_id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE refresh_leases.expires_at <= unixepoch()", params![id,owner]).map_err(err)?;
         if changed == 0 {
             return Err(StatusCode::CONFLICT);
@@ -924,19 +1080,44 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
             })
             .map_err(err)?;
         let social = super::social::source_for_feed(&tx, id)?;
+        let mut checkpoint = if runtime_table_exists(&tx).map_err(err)? {
+            super::collection_runtime::load(&tx, id).map_err(err)?
+        } else {
+            super::social::Checkpoint::default()
+        };
+        if social.is_some()
+            && runtime_table_exists(&tx).map_err(err)?
+            && matches!(
+                super::collection_runtime::collection_context(&tx, id).map_err(err)?,
+                super::collection_runtime::CollectionContext::RecoveryBackfill
+            )
+        {
+            checkpoint.recovery = true;
+        }
         tx.commit().map_err(err)?;
-        (f.url, e, m, social)
+        (f.url, e, m, social, checkpoint)
     };
-    let result = if let Some(source) = social {
-        super::social::fetch(source).await
-    } else {
-        fetch(&url, etag.as_deref(), modified.as_deref()).await
-    };
+    let (result, retry_hint) = RETRY_HINT
+        .scope(std::cell::Cell::new(None), async {
+            let result = if let Some(source) = social {
+                super::social::fetch_pages(source, checkpoint)
+                    .await
+                    .map(|(f, s)| (f, Some(s)))
+            } else {
+                fetch(&url, etag.as_deref(), modified.as_deref())
+                    .await
+                    .map(|f| (f, None))
+            };
+            (result, RETRY_HINT.with(|hint| hint.get()))
+        })
+        .await;
     let mut db = db.lock().map_err(err)?;
     let outcome = match result {
-        Ok(result) => apply_refresh(&mut db, id, result, Some(&owner)),
+        Ok((result, checkpoint)) => {
+            apply_refresh_with_checkpoint(&mut db, id, result, Some(&owner), checkpoint)
+        }
         Err(status) => {
-            apply_refresh_failure(&mut db, id, &owner, status)?;
+            apply_refresh_failure_with_retry(&mut db, id, &owner, status, retry_hint)?;
             Err(status)
         }
     };
@@ -995,10 +1176,19 @@ async fn update_settings(
     db.execute("UPDATE collection_settings SET enabled=COALESCE(?1,enabled),interval_seconds=COALESCE(?2,interval_seconds) WHERE id=1", params![input.enabled,input.interval_seconds]).map_err(err)?;
     Ok(Json(read_settings(&db)?))
 }
-fn due_feed_ids(db: &Connection) -> rusqlite::Result<Vec<i64>> {
-    let mut stmt = db.prepare("SELECT f.id FROM feeds f,collection_settings s WHERE s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked) <= unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)) ORDER BY f.id LIMIT 100")?;
-    stmt.query_map([], |r| r.get::<_, i64>(0))?.collect()
+fn runtime_table_exists(db: &Connection) -> rusqlite::Result<bool> {
+    db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_runtime')", [], |r| r.get(0))
 }
+fn due_feed_ids(db: &Connection) -> rusqlite::Result<Vec<i64>> {
+    let sql = if runtime_table_exists(db)? {
+        "SELECT f.id FROM feeds f JOIN collection_settings s ON s.id=1 LEFT JOIN collection_runtime r ON r.feed_id=f.id WHERE s.enabled=1 AND f.paused=0 AND COALESCE(r.next_retry,0)<=unixepoch() AND (COALESCE(r.more_pending,0)=1 OR f.last_checked IS NULL OR unixepoch(f.last_checked)<=unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)) ORDER BY f.id LIMIT 100"
+    } else {
+        "SELECT f.id FROM feeds f,collection_settings s WHERE s.id=1 AND s.enabled=1 AND f.paused=0 AND (f.last_checked IS NULL OR unixepoch(f.last_checked)<=unixepoch()-COALESCE((SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id),s.interval_seconds)) ORDER BY f.id LIMIT 100"
+    };
+    let mut stmt = db.prepare(sql)?;
+    stmt.query_map([], |r| r.get(0))?.collect()
+}
+
 pub async fn worker(
     db: Db,
     once: bool,
@@ -1028,11 +1218,21 @@ pub async fn worker(
     }
 }
 
+#[cfg(test)]
 fn apply_refresh_failure(
     db: &mut Connection,
     id: i64,
     owner: &str,
     status: StatusCode,
+) -> Result<(), StatusCode> {
+    apply_refresh_failure_with_retry(db, id, owner, status, None)
+}
+fn apply_refresh_failure_with_retry(
+    db: &mut Connection,
+    id: i64,
+    owner: &str,
+    status: StatusCode,
+    retry_hint: Option<i64>,
 ) -> Result<(), StatusCode> {
     let tx = db
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -1040,15 +1240,43 @@ fn apply_refresh_failure(
     let changed = tx.execute("UPDATE feeds SET last_checked=datetime('now'),last_error=? WHERE id=? AND paused=0 AND EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![format!("Refresh failed ({})", status.as_u16()),id,id,owner]).map_err(err)?;
     if changed == 1 {
         super::collection_health::record_attempt(&tx, id, false).map_err(err)?;
+        if runtime_table_exists(&tx).map_err(err)? {
+            let failures: i64 = tx
+                .query_row(
+                    "SELECT consecutive_failures FROM collection_health WHERE feed_id=?",
+                    [id],
+                    |r| r.get(0),
+                )
+                .map_err(err)?;
+            let delay = super::collection_runtime::backoff_seconds(
+                u32::try_from(failures).unwrap_or(u32::MAX),
+            );
+            let now: i64 = tx
+                .query_row("SELECT unixepoch()", [], |r| r.get(0))
+                .map_err(err)?;
+            let mut runtime = super::collection_runtime::load(&tx, id).map_err(err)?;
+            runtime.next_retry = Some(now.saturating_add(delay).max(retry_hint.unwrap_or(0)));
+            super::collection_runtime::save(&tx, id, &runtime).map_err(err)?;
+        }
     }
     tx.commit().map_err(err)?;
     Ok(())
 }
+#[cfg(test)]
 fn apply_refresh(
     db: &mut Connection,
     id: i64,
     result: Fetched,
     owner: Option<&str>,
+) -> Result<Feed, StatusCode> {
+    apply_refresh_with_checkpoint(db, id, result, owner, None)
+}
+fn apply_refresh_with_checkpoint(
+    db: &mut Connection,
+    id: i64,
+    result: Fetched,
+    owner: Option<&str>,
+    checkpoint: Option<super::social::Checkpoint>,
 ) -> Result<Feed, StatusCode> {
     let tx = db
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -1063,12 +1291,27 @@ fn apply_refresh(
         return Err(StatusCode::CONFLICT);
     }
     if let Some(parsed) = result.parsed {
-        store_entries(&tx, id, &parsed).map_err(err)?;
+        let mut context = super::collection_runtime::collection_context(&tx, id).map_err(err)?;
+        if context != super::collection_runtime::CollectionContext::InitialBackfill
+            && checkpoint.as_ref().is_some_and(|state| state.recovery)
+        {
+            context = super::collection_runtime::CollectionContext::RecoveryBackfill;
+        }
+        store_entries(&tx, id, &parsed, context).map_err(err)?;
         tx.execute(
             "UPDATE feeds SET etag=?,modified=? WHERE id=?",
             params![result.etag, result.modified, id],
         )
         .map_err(err)?;
+    }
+    if let Some(mut state) = checkpoint
+        && runtime_table_exists(&tx).map_err(err)?
+    {
+        if !state.more_pending {
+            state.recovery = false;
+        }
+        state.next_retry = None;
+        super::collection_runtime::save(&tx, id, &state).map_err(err)?;
     }
     tx.execute(
         "UPDATE feeds SET last_checked=datetime('now'),last_error=NULL WHERE id=?",
@@ -1077,6 +1320,13 @@ fn apply_refresh(
     .map_err(err)?;
     if owner.is_some() {
         super::collection_health::record_attempt(&tx, id, true).map_err(err)?;
+        if runtime_table_exists(&tx).map_err(err)? {
+            tx.execute(
+                "UPDATE collection_runtime SET next_retry=NULL WHERE feed_id=?",
+                [id],
+            )
+            .map_err(err)?;
+        }
     }
     tx.commit().map_err(err)?;
     get_feed(db, id)
@@ -1349,7 +1599,7 @@ mod tests {
         assert_eq!(
             c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            9
+            10
         );
         assert!(lookup(&c, 1).unwrap().is_starred);
         assert_eq!(
@@ -1491,6 +1741,8 @@ mod tests {
         db.execute(SCHEMA, []).unwrap();
         let tx = db.transaction().unwrap();
         migrate(&tx).unwrap();
+        super::article_revisions::migrate_catchup(&tx).unwrap();
+        super::story_groups::migrate_catchup(&tx).unwrap();
         tx.execute(
             "INSERT INTO feeds(url,title) VALUES ('https://example.com/feed','Feed')",
             [],
@@ -1498,10 +1750,22 @@ mod tests {
         .unwrap();
         let xml=b"<rss version='2.0'><channel><title>Example</title><link>https://example.com</link><description>x</description><item><guid>one</guid><title>First</title><description><![CDATA[<p>Hello <b>world</b></p>]]></description></item></channel></rss>";
         let parsed = feed_rs::parser::parse(xml.as_slice()).unwrap();
-        store_entries(&tx, 1, &parsed).unwrap();
+        store_entries(
+            &tx,
+            1,
+            &parsed,
+            super::collection_runtime::CollectionContext::InitialBackfill,
+        )
+        .unwrap();
         tx.execute("UPDATE articles SET is_read=1,is_starred=1", [])
             .unwrap();
-        store_entries(&tx, 1, &parsed).unwrap();
+        store_entries(
+            &tx,
+            1,
+            &parsed,
+            super::collection_runtime::CollectionContext::Normal,
+        )
+        .unwrap();
         let (count, read, star, content): (i64, bool, bool, String) = tx
             .query_row(
                 "SELECT count(*),is_read,is_starred,content FROM articles",
@@ -1704,5 +1968,313 @@ mod tests {
         ] {
             assert!(fetch(url, None, None).await.is_err());
         }
+    }
+    #[test]
+    fn retry_after_seconds_and_http_dates() {
+        assert_eq!(retry_after_deadline("120", 1000), Some(1120));
+        assert_eq!(
+            retry_after_deadline("Sun, 06 Nov 1994 08:49:37 GMT", 0),
+            Some(784111777)
+        );
+        assert_eq!(
+            retry_after_deadline("Sun, 31 Feb 2024 08:49:37 GMT", 0),
+            None
+        );
+        assert_eq!(
+            retry_after_deadline("Sunday, 06-Nov-94 08:49:37 GMT", 784000000),
+            Some(784111777)
+        );
+        assert_eq!(
+            retry_after_deadline("Sun Nov  6 08:49:37 1994", 0),
+            Some(784111777)
+        );
+        assert_eq!(retry_after_deadline("invalid", 0), None);
+        assert_eq!(retry_after_deadline("1", i64::MAX), Some(i64::MAX));
+    }
+
+    #[tokio::test]
+    async fn host_requests_serialize_without_blocking_other_hosts() {
+        let first = host_permit("same.example").await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), host_permit("same.example"))
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), host_permit("other.example"))
+                .await
+                .is_ok()
+        );
+        drop(first);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), host_permit("same.example"))
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_deadline_and_stale_lease_are_enforced() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        {
+            let mut c = db.lock().unwrap();
+            c.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.invalid/feed','Example'); INSERT INTO refresh_leases VALUES(1,'owner',unixepoch()+60);").unwrap();
+            let deadline: i64 = c
+                .query_row("SELECT unixepoch()+3600", [], |r| r.get(0))
+                .unwrap();
+            apply_refresh_failure_with_retry(
+                &mut c,
+                1,
+                "stale",
+                StatusCode::BAD_GATEWAY,
+                Some(deadline),
+            )
+            .unwrap();
+            assert_eq!(
+                c.query_row("SELECT count(*) FROM collection_runtime", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            apply_refresh_failure_with_retry(
+                &mut c,
+                1,
+                "owner",
+                StatusCode::BAD_GATEWAY,
+                Some(deadline),
+            )
+            .unwrap();
+            assert_eq!(
+                c.query_row(
+                    "SELECT next_retry FROM collection_runtime WHERE feed_id=1",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                deadline
+            );
+            assert!(due_feed_ids(&c).unwrap().is_empty());
+        }
+        assert_eq!(
+            refresh_feed(db, 1, false).await.err(),
+            Some(StatusCode::TOO_MANY_REQUESTS)
+        );
+    }
+    #[test]
+    fn stale_success_cannot_commit_social_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = open_db(&dir.path().join("db"), false).unwrap();
+        db.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.invalid/s','S'); INSERT INTO refresh_leases VALUES(1,'new-owner',unixepoch()+60);").unwrap();
+        let state = super::super::social::Checkpoint {
+            cursor: Some("next".into()),
+            more_pending: true,
+            ..Default::default()
+        };
+        let result = Fetched {
+            parsed: None,
+            etag: None,
+            modified: None,
+        };
+        assert!(matches!(
+            apply_refresh_with_checkpoint(&mut db, 1, result, Some("old-owner"), Some(state)),
+            Err(StatusCode::CONFLICT)
+        ));
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM collection_runtime", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row("SELECT last_checked FROM feeds WHERE id=1", [], |r| r
+                .get::<_, Option<String>>(0))
+                .unwrap(),
+            None
+        );
+    }
+    fn synthetic_rss(entries: &[(&str, &str)]) -> Fetched {
+        let mut xml = String::from(
+            "<rss version=\"2.0\"><channel><title>Synthetic</title><link>https://example.invalid/</link><description>Fixture</description>",
+        );
+        for (id, body) in entries {
+            xml.push_str(&format!("<item><guid isPermaLink=\"false\">{id}</guid><title>{id}</title><link>https://example.invalid/{id}</link><description>{body}</description><pubDate>Sat, 07 Nov 2026 00:00:00 GMT</pubDate></item>"));
+        }
+        xml.push_str("</channel></rss>");
+        Fetched {
+            parsed: Some(
+                parse_feed(
+                    xml.as_bytes(),
+                    &Url::parse("https://example.invalid/rss").unwrap(),
+                )
+                .unwrap(),
+            ),
+            etag: None,
+            modified: None,
+        }
+    }
+
+    #[test]
+    fn accepted_rss_hook_classifies_before_success_metadata_and_preserves_reader_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = open_db(&dir.path().join("db"), false).unwrap();
+        db.execute_batch("INSERT INTO feeds(id,url,title) VALUES(1,'https://example.invalid/rss','Synthetic'); INSERT INTO refresh_leases VALUES(1,'owner',unixepoch()+3600); UPDATE collection_settings SET enabled=1,interval_seconds=900;").unwrap();
+        apply_refresh(
+            &mut db,
+            1,
+            synthetic_rss(&[("initial", "original")]),
+            Some("owner"),
+        )
+        .unwrap();
+        db.execute_batch("UPDATE articles SET is_read=1,is_starred=1 WHERE external_id='initial'; UPDATE feeds SET last_checked=datetime('now','-16 minutes'); UPDATE collection_health SET last_success=datetime('now','-16 minutes');").unwrap();
+        assert_eq!(due_feed_ids(&db).unwrap(), vec![1]);
+        apply_refresh(
+            &mut db,
+            1,
+            synthetic_rss(&[
+                ("initial", "changed once"),
+                ("normal", "new during regular polling"),
+            ]),
+            Some("owner"),
+        )
+        .unwrap();
+        apply_refresh_failure(&mut db, 1, "owner", StatusCode::SERVICE_UNAVAILABLE).unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT consecutive_failures FROM collection_health WHERE feed_id=1",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+        db.execute(
+            "UPDATE collection_runtime SET next_retry=unixepoch()-1 WHERE feed_id=1",
+            [],
+        )
+        .unwrap();
+        apply_refresh(
+            &mut db,
+            1,
+            synthetic_rss(&[
+                ("initial", "changed again"),
+                ("normal", "new during regular polling"),
+                ("recovery", "observed after failure"),
+            ]),
+            Some("owner"),
+        )
+        .unwrap();
+        let kinds:Vec<(String,String)> = db.prepare("SELECT a.external_id,r.ingestion_kind FROM articles a JOIN article_revision_state r ON r.article_id=a.id ORDER BY a.external_id").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(
+            kinds,
+            vec![
+                ("initial".into(), "initial".into()),
+                ("normal".into(), "normal".into()),
+                ("recovery".into(), "recovery".into())
+            ]
+        );
+        assert_eq!(db.query_row("SELECT is_read,is_starred,current_revision FROM articles JOIN article_revision_state r ON r.article_id=articles.id WHERE external_id='initial'",[],|r|Ok((r.get::<_,bool>(0)?,r.get::<_,bool>(1)?,r.get::<_,i64>(2)?))).unwrap(),(true,true,3));
+        assert_eq!(
+            db.query_row(
+                "SELECT consecutive_failures FROM collection_health WHERE feed_id=1",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        assert!(
+            db.query_row("SELECT last_error FROM feeds WHERE id=1", [], |r| r
+                .get::<_, Option<String>>(0))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn social_recovery_context_survives_health_reset_and_final_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = open_db(&dir.path().join("db"), false).unwrap();
+        db.execute_batch("INSERT INTO feeds(id,url,title,last_checked) VALUES(1,'https://example.invalid/social','Synthetic',datetime('now')); INSERT INTO social_sources VALUES(1,'mastodon','alice','https://example.invalid','123'); INSERT INTO collection_health VALUES(1,datetime('now'),1); INSERT INTO collection_runtime(feed_id,high_water) VALUES(1,'10'); INSERT INTO refresh_leases VALUES(1,'owner',unixepoch()+3600);").unwrap();
+        let pending = super::social::Checkpoint {
+            high_water: Some("10".into()),
+            cycle_head: Some("30".into()),
+            cursor: Some("20".into()),
+            more_pending: true,
+            recovery: true,
+            ..Default::default()
+        };
+        apply_refresh_with_checkpoint(
+            &mut db,
+            1,
+            synthetic_rss(&[("page1", "recovery page")]),
+            Some("owner"),
+            Some(pending),
+        )
+        .unwrap();
+        assert_eq!(
+            super::collection_runtime::collection_context(&db, 1).unwrap(),
+            super::collection_runtime::CollectionContext::RecoveryBackfill
+        );
+        let complete = super::social::Checkpoint {
+            high_water: Some("30".into()),
+            recovery: true,
+            ..Default::default()
+        };
+        apply_refresh_with_checkpoint(
+            &mut db,
+            1,
+            synthetic_rss(&[("page2", "last recovery page")]),
+            Some("owner"),
+            Some(complete),
+        )
+        .unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM article_revision_state WHERE ingestion_kind='recovery'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            super::collection_runtime::collection_context(&db, 1).unwrap(),
+            super::collection_runtime::CollectionContext::Normal
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_headers_are_captured_only_for_429_and_503_and_are_task_local() {
+        for status in [
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::SERVICE_UNAVAILABLE,
+        ] {
+            RETRY_HINT
+                .scope(std::cell::Cell::new(None), async {
+                    let mut headers = HeaderMap::new();
+                    headers.insert(reqwest::header::RETRY_AFTER, "120".parse().unwrap());
+                    record_retry_hint(status, &headers, 1000);
+                    assert_eq!(RETRY_HINT.with(|hint| hint.get()), Some(1120));
+                })
+                .await;
+        }
+        RETRY_HINT
+            .scope(std::cell::Cell::new(None), async {
+                let mut headers = HeaderMap::new();
+                headers.insert(reqwest::header::RETRY_AFTER, "120".parse().unwrap());
+                record_retry_hint(StatusCode::BAD_GATEWAY, &headers, 1000);
+                assert_eq!(RETRY_HINT.with(|hint| hint.get()), None);
+                headers.insert(reqwest::header::RETRY_AFTER, "invalid".parse().unwrap());
+                record_retry_hint(StatusCode::SERVICE_UNAVAILABLE, &headers, 1000);
+                assert_eq!(RETRY_HINT.with(|hint| hint.get()), None);
+                headers.insert(
+                    reqwest::header::RETRY_AFTER,
+                    "Sun, 06 Nov 1994 08:49:37 GMT".parse().unwrap(),
+                );
+                record_retry_hint(StatusCode::SERVICE_UNAVAILABLE, &headers, 0);
+                assert_eq!(RETRY_HINT.with(|hint| hint.get()), Some(784111777));
+            })
+            .await;
     }
 }

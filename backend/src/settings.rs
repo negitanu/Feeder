@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(
             db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            9
+            10
         );
         assert_eq!(read(&db).unwrap().default_view, "all");
         assert!(lookup(&db, 9).unwrap().is_starred);
@@ -520,7 +520,7 @@ mod tests {
         assert_eq!(
             db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                 .unwrap(),
-            9
+            10
         );
         assert_eq!(read(&db).unwrap().default_view, "all");
         assert_eq!(read(&db).unwrap().display_timezone, "UTC");

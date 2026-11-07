@@ -1,6 +1,9 @@
+mod article_revisions;
 mod auth;
+mod catchup;
 mod collection;
 mod collection_health;
+mod collection_runtime;
 mod digest;
 mod discovery;
 mod duplicates;
@@ -14,6 +17,7 @@ mod reader;
 mod settings;
 mod smart_folders;
 mod social;
+mod story_groups;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -31,7 +35,7 @@ use std::{
 use tower_http::services::ServeDir;
 
 const APP_ID: i64 = 0x46454544;
-const ARTICLE_SOURCE_FIELDS: &str = "feed_id AS publisher_feed_id, (SELECT title FROM feeds WHERE feeds.id=articles.feed_id) AS publisher_feed_title, EXISTS(SELECT 1 FROM article_read_later WHERE article_id=articles.id) AS saved_for_later";
+const ARTICLE_SOURCE_FIELDS: &str = "feed_id AS publisher_feed_id, (SELECT title FROM feeds WHERE feeds.id=articles.feed_id) AS publisher_feed_title, EXISTS(SELECT 1 FROM article_read_later WHERE article_id=articles.id) AS saved_for_later, (SELECT current_revision FROM article_revision_state WHERE article_id=articles.id) AS revision, (SELECT fingerprint FROM article_revision_state WHERE article_id=articles.id) AS content_fingerprint, (SELECT changed_at FROM article_revision_state WHERE article_id=articles.id) AS changed_at, EXISTS(SELECT 1 FROM article_revision_state state JOIN article_visits visits ON visits.article_id=state.article_id WHERE state.article_id=articles.id AND julianday(state.changed_at)>julianday(visits.visited_at)) AS has_update";
 const SCHEMA: &str = "CREATE TABLE articles (id INTEGER PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, url TEXT NOT NULL, published TEXT NOT NULL, is_read INTEGER NOT NULL DEFAULT 0 CHECK(is_read IN (0,1)), is_starred INTEGER NOT NULL DEFAULT 0 CHECK(is_starred IN (0,1)))";
 type Db = Arc<Mutex<Connection>>;
 
@@ -49,6 +53,10 @@ struct Article {
     feed_id: Option<i64>,
     feed_title: Option<String>,
     is_saved_for_later: bool,
+    revision: Option<i64>,
+    content_fingerprint: Option<String>,
+    changed_at: Option<String>,
+    has_update: bool,
 }
 fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
     Ok(Article {
@@ -64,6 +72,10 @@ fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
         feed_id: row.get("publisher_feed_id")?,
         feed_title: row.get("publisher_feed_title")?,
         is_saved_for_later: row.get("saved_for_later")?,
+        revision: row.get("revision")?,
+        content_fingerprint: row.get("content_fingerprint")?,
+        changed_at: row.get("changed_at")?,
+        has_update: row.get("has_update")?,
     })
 }
 
@@ -80,7 +92,8 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
         let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if !objects.is_empty()
             && !(app_id == APP_ID
-                && ((version == 9 && extensions::recognized_v9(&objects))
+                && ((version == 10 && extensions::recognized_v10(&objects))
+                    || (version == 9 && extensions::recognized_v9(&objects))
                     || (version == 8 && collection::recognized_v8(&objects))
                     || (version == 7 && auth::recognized_v7(&objects))
                     || (version == 6 && settings::recognized_v6(&objects))
@@ -107,7 +120,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     db.pragma_update(None, "foreign_keys", true)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if (1..=8).contains(&version) {
+    if (1..=9).contains(&version) {
         let backup_path = path.with_extension(format!("v{version}-backup.sqlite3"));
         if backup_path.exists() {
             return Err("database backup already exists; refusing to overwrite it".into());
@@ -144,7 +157,10 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     if version < 9 {
         extensions::migrate(&tx)?;
     }
-    tx.pragma_update(None, "user_version", 9)?;
+    if version < 10 {
+        extensions::migrate_catchup(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", 10)?;
     if demo {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
         if count == 0 {
@@ -286,6 +302,9 @@ fn base_router(db: Db) -> Router {
         .merge(collection_health::routes())
         .merge(digest::routes())
         .merge(duplicates::routes())
+        .merge(article_revisions::routes())
+        .merge(story_groups::routes())
+        .merge(catchup::routes())
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/articles", get(reader::list))
         .route("/api/articles/read-all", post(reader::read_all))
