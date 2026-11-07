@@ -994,6 +994,187 @@ mod tests {
             StatusCode::FORBIDDEN
         );
     }
+    #[tokio::test]
+    async fn feature_routes_enforce_browser_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        {
+            let db = db.lock().unwrap();
+            db.execute("INSERT INTO api_keys(name,prefix,token_hash,scope,expires_at) VALUES('test','prefix',?,'write',datetime('now','+1 day'))", [hash("write-secret")]).unwrap();
+            db.execute("INSERT INTO articles(id,title,content,url,published) VALUES(1,'Synthetic','body','https://example.invalid/article','2026-01-01')", []).unwrap();
+        }
+        let access = Access {
+            mode: Mode::Local,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        };
+        let router = wrap(
+            base_router(db.clone()).merge(routes(access.clone()).with_state(db.clone())),
+            db.clone(),
+            access,
+            "127.0.0.1:8080".parse().unwrap(),
+            None,
+        );
+        let host = "127.0.0.1:8080";
+        let session = router
+            .clone()
+            .oneshot(request("GET", "/api/session", host, None, None, None, ""))
+            .await
+            .unwrap();
+        let cookie = session.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        let csrf = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(session.into_body(), 4096).await.unwrap(),
+        )
+        .unwrap()["csrf_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let reads = [
+            "/api/smart-folders",
+            "/api/mute-rules",
+            "/api/duplicates",
+            "/api/digest",
+            "/api/read-later",
+            "/api/read-later/settings",
+            "/api/social/sources",
+            "/api/collection/health",
+        ];
+        for path in reads {
+            let ok = router
+                .clone()
+                .oneshot(request("GET", path, host, Some(&cookie), None, None, ""))
+                .await
+                .unwrap();
+            assert_eq!(ok.status(), StatusCode::OK, "GET {path}");
+            let blocked = router
+                .clone()
+                .oneshot(request(
+                    "GET",
+                    path,
+                    host,
+                    Some(&cookie),
+                    None,
+                    Some("https://attacker.invalid"),
+                    "",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(
+                blocked.status(),
+                StatusCode::FORBIDDEN,
+                "cross-origin GET {path}"
+            );
+        }
+        let writes = [
+            (
+                "POST",
+                "/api/smart-folders",
+                r#"{"name":"Synthetic","snapshot":{"filter":"all","query":"","source":null,"applied":{"order":"new","scope":"both"}}}"#,
+            ),
+            (
+                "POST",
+                "/api/mute-rules",
+                r#"{"name":"Synthetic","term":"test","field":"title","feed_id":null,"enabled":true}"#,
+            ),
+            ("POST", "/api/articles/1/read-later", r#"{"saved":true}"#),
+            (
+                "PATCH",
+                "/api/read-later/settings",
+                r#"{"auto_remove":true}"#,
+            ),
+            (
+                "POST",
+                "/api/social/sources",
+                r#"{"provider":"invalid","actor":"synthetic"}"#,
+            ),
+            ("DELETE", "/api/social/sources/999", ""),
+        ];
+        for (method, path, body) in writes {
+            let mut bearer = request(method, path, host, None, None, None, body);
+            bearer.headers_mut().insert(
+                header::AUTHORIZATION,
+                "Bearer write-secret".parse().unwrap(),
+            );
+            assert_eq!(
+                router.clone().oneshot(bearer).await.unwrap().status(),
+                StatusCode::FORBIDDEN,
+                "bearer {method} {path}"
+            );
+            for token in [None, Some("wrong")] {
+                assert_eq!(
+                    router
+                        .clone()
+                        .oneshot(request(
+                            method,
+                            path,
+                            host,
+                            Some(&cookie),
+                            token,
+                            None,
+                            body
+                        ))
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::FORBIDDEN,
+                    "CSRF {method} {path}"
+                );
+            }
+            assert_eq!(
+                router
+                    .clone()
+                    .oneshot(request(
+                        method,
+                        path,
+                        host,
+                        Some(&cookie),
+                        Some(&csrf),
+                        Some("https://attacker.invalid"),
+                        body
+                    ))
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::FORBIDDEN,
+                "origin {method} {path}"
+            );
+            let status = router
+                .clone()
+                .oneshot(request(
+                    method,
+                    path,
+                    host,
+                    Some(&cookie),
+                    Some(&csrf),
+                    None,
+                    body,
+                ))
+                .await
+                .unwrap()
+                .status();
+            if path == "/api/social/sources/999" {
+                assert_eq!(status, StatusCode::NOT_FOUND);
+            } else if path == "/api/social/sources" {
+                assert_eq!(status, StatusCode::BAD_REQUEST);
+            } else {
+                assert!(status.is_success(), "authorized {method} {path}: {status}");
+            }
+        }
+        let mut admin = request("GET", "/api/keys", host, None, None, None, "");
+        admin.headers_mut().insert(
+            header::AUTHORIZATION,
+            "Bearer write-secret".parse().unwrap(),
+        );
+        assert_eq!(
+            router.oneshot(admin).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+    }
     #[test]
     fn v6_migration_preserves_data_and_backup() {
         let d = tempfile::tempdir().unwrap();
@@ -1004,10 +1185,16 @@ mod tests {
             [],
         )
         .unwrap();
+        crate::extensions::drop_for_legacy_fixture(&db);
         db.execute_batch("INSERT INTO folders(id,name) VALUES(10,'folder'); INSERT INTO feeds(id,url,title,folder_id) VALUES(20,'https://example.com/feed','feed',10); UPDATE articles SET is_read=1,is_starred=1,feed_id=20; INSERT INTO article_visits(article_id,visited_at) VALUES(1,'2026-01-01'); UPDATE reader_settings SET default_view='starred'; DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings; PRAGMA user_version=6;")
         .unwrap();
         drop(db);
         let db = open_db(&p, false).unwrap();
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            9
+        );
         assert_eq!(
             db.query_row("SELECT title FROM articles", [], |r| r.get::<_, String>(0))
                 .unwrap(),

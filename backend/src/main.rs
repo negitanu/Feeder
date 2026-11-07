@@ -1,11 +1,19 @@
 mod auth;
 mod collection;
+mod collection_health;
+mod digest;
 mod discovery;
+mod duplicates;
+mod extensions;
 mod hero;
+mod mute_rules;
 mod opml;
 mod public_api;
+mod read_later;
 mod reader;
 mod settings;
+mod smart_folders;
+mod social;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -23,6 +31,7 @@ use std::{
 use tower_http::services::ServeDir;
 
 const APP_ID: i64 = 0x46454544;
+const ARTICLE_SOURCE_FIELDS: &str = "feed_id AS publisher_feed_id, (SELECT title FROM feeds WHERE feeds.id=articles.feed_id) AS publisher_feed_title, EXISTS(SELECT 1 FROM article_read_later WHERE article_id=articles.id) AS saved_for_later";
 const SCHEMA: &str = "CREATE TABLE articles (id INTEGER PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, url TEXT NOT NULL, published TEXT NOT NULL, is_read INTEGER NOT NULL DEFAULT 0 CHECK(is_read IN (0,1)), is_starred INTEGER NOT NULL DEFAULT 0 CHECK(is_starred IN (0,1)))";
 type Db = Arc<Mutex<Connection>>;
 
@@ -37,6 +46,9 @@ struct Article {
     is_starred: bool,
     last_visited: Option<String>,
     image_url: Option<String>,
+    feed_id: Option<i64>,
+    feed_title: Option<String>,
+    is_saved_for_later: bool,
 }
 fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
     Ok(Article {
@@ -49,6 +61,9 @@ fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
         is_starred: row.get(6)?,
         last_visited: row.get(7)?,
         image_url: hero::candidate(row.get(0)?, &row.get::<_, String>(3)?),
+        feed_id: row.get("publisher_feed_id")?,
+        feed_title: row.get("publisher_feed_title")?,
+        is_saved_for_later: row.get("saved_for_later")?,
     })
 }
 
@@ -65,7 +80,8 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
         let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if !objects.is_empty()
             && !(app_id == APP_ID
-                && ((version == 8 && collection::recognized_v8(&objects))
+                && ((version == 9 && extensions::recognized_v9(&objects))
+                    || (version == 8 && collection::recognized_v8(&objects))
                     || (version == 7 && auth::recognized_v7(&objects))
                     || (version == 6 && settings::recognized_v6(&objects))
                     || (version == 5 && collection::recognized_v5(&objects))
@@ -91,7 +107,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     db.pragma_update(None, "foreign_keys", true)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if (1..=7).contains(&version) {
+    if (1..=8).contains(&version) {
         let backup_path = path.with_extension(format!("v{version}-backup.sqlite3"));
         if backup_path.exists() {
             return Err("database backup already exists; refusing to overwrite it".into());
@@ -125,7 +141,10 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
     if version < 8 {
         collection::migrate_intervals(&tx)?;
     }
-    tx.pragma_update(None, "user_version", 8)?;
+    if version < 9 {
+        extensions::migrate(&tx)?;
+    }
+    tx.pragma_update(None, "user_version", 9)?;
     if demo {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
         if count == 0 {
@@ -140,7 +159,7 @@ fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::
 
 fn lookup(db: &Connection, id: i64) -> Result<Article, StatusCode> {
     db.query_row(
-        "SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id) FROM articles WHERE id=?1",
+        &format!("SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id),{ARTICLE_SOURCE_FIELDS} FROM articles WHERE id=?1"),
         [id],
         article,
     )
@@ -260,6 +279,13 @@ fn base_router(db: Db) -> Router {
         .merge(discovery::routes())
         .merge(opml::routes())
         .merge(settings::routes())
+        .merge(smart_folders::routes())
+        .merge(social::routes())
+        .merge(read_later::routes())
+        .merge(mute_rules::routes())
+        .merge(collection_health::routes())
+        .merge(digest::routes())
+        .merge(duplicates::routes())
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/articles", get(reader::list))
         .route("/api/articles/read-all", post(reader::read_all))
@@ -627,6 +653,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("old.sqlite3");
         let db = open_db(&path, false).unwrap();
+        extensions::drop_for_legacy_fixture(&db);
         db.execute(
             "INSERT INTO feeds(url,title) VALUES ('https://example.com/feed','Example')",
             [],

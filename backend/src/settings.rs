@@ -378,9 +378,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("db");
         let db = open_db(&path, false).unwrap();
+        crate::extensions::drop_for_legacy_fixture(&db);
         db.execute_batch("INSERT INTO folders(id,name) VALUES(4,'folder'),(5,'other'); UPDATE folder_order SET position=CASE folder_id WHEN 4 THEN 1 ELSE 0 END; INSERT INTO feeds(id,url,title,folder_id) VALUES(7,'https://example.com','feed',4),(8,'https://example.org','other',4); UPDATE feed_order SET position=CASE feed_id WHEN 7 THEN 1 ELSE 0 END; INSERT INTO articles(id,title,content,url,published,is_read,is_starred,feed_id) VALUES(9,'title','body','https://example.com/a','2026-01-01',1,1,7); INSERT INTO article_visits VALUES(9,'2026-01-02'); UPDATE collection_settings SET enabled=1; DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings; DROP TABLE reader_settings; PRAGMA user_version=5;").unwrap();
         drop(db);
         let db = open_db(&path, false).unwrap();
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            9
+        );
         assert_eq!(read(&db).unwrap().default_view, "all");
         assert!(lookup(&db, 9).unwrap().is_starred);
         assert_eq!(
@@ -431,6 +437,7 @@ mod tests {
         }
         drop(db);
         let old = Connection::open(&path).unwrap();
+        crate::extensions::drop_for_legacy_fixture(&old);
         old.execute("DROP TABLE reader_settings", []).unwrap();
         old.execute_batch(
             "DROP TABLE feed_poll_intervals; DROP TABLE api_keys; DROP TABLE api_rate_settings;",
@@ -510,6 +517,11 @@ mod tests {
             );
         }
         let db = db.lock().unwrap();
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            9
+        );
         assert_eq!(read(&db).unwrap().default_view, "all");
         assert_eq!(read(&db).unwrap().display_timezone, "UTC");
         assert_eq!(

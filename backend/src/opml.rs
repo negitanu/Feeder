@@ -522,16 +522,14 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         {
             let db = state.lock().unwrap();
-            assert_eq!(
-                db.query_row("SELECT paused FROM feeds", [], |r| r.get::<_, bool>(0))
-                    .unwrap(),
-                false
+            assert!(
+                !db.query_row("SELECT paused FROM feeds", [], |r| r.get::<_, bool>(0))
+                    .unwrap()
             );
-            assert_eq!(
+            assert!(
                 db.query_row("SELECT enabled FROM collection_settings", [], |r| r
                     .get::<_, bool>(0))
-                    .unwrap(),
-                true
+                    .unwrap()
             );
             db.execute("UPDATE feeds SET paused=1", []).unwrap();
             db.execute("UPDATE collection_settings SET enabled=0", [])

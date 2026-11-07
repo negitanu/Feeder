@@ -43,6 +43,8 @@ pub struct Filters {
     feed_id: Option<i64>,
     folder_id: Option<i64>,
     history: Option<bool>,
+    later: Option<bool>,
+    include_muted: Option<bool>,
     order: Option<String>,
     scope: Option<String>,
     any: Option<String>,
@@ -77,7 +79,7 @@ fn parse_query(raw: &str) -> Result<ListQuery, StatusCode> {
             "offset" => q.offset = Some(value.parse().map_err(|_| StatusCode::BAD_REQUEST)?),
             "pagination" => q.pagination = Some(value.into_owned()),
             "cursor" => q.cursor = Some(value.into_owned()),
-            "unread" | "starred" | "history" => {
+            "unread" | "starred" | "history" | "later" | "include_muted" => {
                 let v = match value.as_ref() {
                     "true" => true,
                     "false" => false,
@@ -193,9 +195,19 @@ struct Scope {
     values: Vec<Value>,
     order: &'static str,
 }
+pub fn validate_filters(db: &Connection, f: &Filters) -> Result<(), StatusCode> {
+    scope(db, f).map(|_| ())
+}
+
 fn scope(db: &Connection, f: &Filters) -> Result<Scope, StatusCode> {
     let mut c = Vec::<String>::new();
     let mut v = Vec::<Value>::new();
+    if !f.include_muted.unwrap_or(false) {
+        c.push(format!("NOT ({})", mute_rules::HIDDEN_SQL));
+    }
+    if f.later.unwrap_or(false) {
+        c.push("EXISTS(SELECT 1 FROM article_read_later WHERE article_id=articles.id)".into());
+    }
     if f.unread.unwrap_or(false) {
         c.push("is_read=0".into())
     }
@@ -410,9 +422,33 @@ fn scope_fingerprint(
     } else {
         Vec::new()
     };
+    let mut rules = db
+        .prepare("SELECT id,revision,enabled,term,field,feed_id FROM mute_rules ORDER BY id")
+        .map_err(collection::err)?;
+    let rules = rules
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, bool>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, Option<i64>>(5)?,
+            ))
+        })
+        .map_err(collection::err)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(collection::err)?;
     let data = format!(
         "{:?}",
-        (&scope.sql, &scope.values, &scope.order, timezone, members)
+        (
+            &scope.sql,
+            &scope.values,
+            &scope.order,
+            timezone,
+            members,
+            rules
+        )
     );
     Ok(URL_SAFE_NO_PAD.encode(Sha256::digest(data.as_bytes())))
 }
@@ -482,7 +518,7 @@ fn cursor_listing(db: &Connection, q: &ListQuery) -> Result<Listing, StatusCode>
     }
     let limit = q.limit.unwrap_or(20) as usize;
     values.push(((limit + 1) as i64).into());
-    let mut stmt = db.prepare(&format!("SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id),{expr} FROM articles{where_sql} ORDER BY {} LIMIT ?", scope.order)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut stmt = db.prepare(&format!("SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id),{expr},{ARTICLE_SOURCE_FIELDS} FROM articles{where_sql} ORDER BY {} LIMIT ?", scope.order)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut rows = stmt
         .query_map(rusqlite::params_from_iter(values.iter()), |r| {
             let key = if recent {
@@ -557,7 +593,7 @@ pub async fn list(
     let mut v = s.values;
     v.push(i64::from(q.limit.unwrap_or(20)).into());
     v.push(i64::from(q.offset.unwrap_or(0)).into());
-    let mut st=db.prepare(&format!("SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id) FROM articles{} ORDER BY {} LIMIT ? OFFSET ?",s.sql,s.order)).map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut st=db.prepare(&format!("SELECT id,title,content,url,published,is_read,is_starred,(SELECT visited_at FROM article_visits WHERE article_id=articles.id),{ARTICLE_SOURCE_FIELDS} FROM articles{} ORDER BY {} LIMIT ? OFFSET ?",s.sql,s.order)).map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
     let items = st
         .query_map(rusqlite::params_from_iter(v.iter()), article)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -590,6 +626,7 @@ pub async fn visit(
         return Err(StatusCode::NOT_FOUND);
     }
     tx.execute("INSERT INTO article_visits(article_id,visited_at) VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', max(julianday('now'), coalesce((SELECT max(julianday(visited_at)) + 1.0/86400000 FROM article_visits),0)))) ON CONFLICT(article_id) DO UPDATE SET visited_at=excluded.visited_at",[id]).map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+    read_later::on_visit(&tx, id).map_err(collection::err)?;
     let item = lookup(&tx, id)?;
     tx.commit().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(item))
@@ -758,6 +795,127 @@ mod tests {
             .iter()
             .map(|a| a["id"].as_i64().unwrap())
             .collect()
+    }
+    #[tokio::test]
+    async fn later_mute_bulk_cursor_and_visit_share_state() {
+        let (_dir, db) = fixture();
+        let (_, first) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?pagination=cursor&limit=2",
+            serde_json::Value::Null,
+        )
+        .await;
+        let cursor = first["next_cursor"].as_str().unwrap().to_owned();
+        {
+            let c = db.lock().unwrap();
+            c.execute("INSERT INTO mute_rules(name,term,field,enabled,revision) VALUES('Synthetic hide','Alpha','title',1,1)",[]).unwrap();
+        }
+        let (status, _) = call(
+            db.clone(),
+            "GET",
+            &format!("/api/articles?pagination=cursor&limit=2&cursor={cursor}"),
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let (_, visible) = call(db.clone(), "GET", "/api/articles", serde_json::Value::Null).await;
+        assert!(!ids(&visible).contains(&1) && !ids(&visible).contains(&4));
+        let (_, all) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?include_muted=true",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&all).len(), 5);
+        let (status, reasons) = call(
+            db.clone(),
+            "GET",
+            "/api/articles/1/mute-reasons",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(reasons["reasons"][0]["name"], "Synthetic hide");
+        let (status, _) = call(
+            db.clone(),
+            "POST",
+            "/api/articles/read-all",
+            serde_json::json!({"filters":{}}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, hidden) = call(
+            db.clone(),
+            "GET",
+            "/api/articles/1",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(hidden["is_read"], false);
+        for id in [1, 2] {
+            assert_eq!(
+                call(
+                    db.clone(),
+                    "POST",
+                    &format!("/api/articles/{id}/read-later"),
+                    serde_json::json!({"saved":true})
+                )
+                .await
+                .0,
+                StatusCode::OK
+            );
+        }
+        let (_, later) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?later=true",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&later), vec![2]);
+        assert_eq!(later["items"][0]["feed_title"], "B");
+        assert_eq!(later["items"][0]["is_saved_for_later"], true);
+        call(
+            db.clone(),
+            "PATCH",
+            "/api/read-later/settings",
+            serde_json::json!({"auto_remove":true}),
+        )
+        .await;
+        call(
+            db.clone(),
+            "POST",
+            "/api/articles/2/state",
+            serde_json::json!({"read":true}),
+        )
+        .await;
+        let (_, before_visit) = call(
+            db.clone(),
+            "GET",
+            "/api/articles/2",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(before_visit["is_saved_for_later"], true);
+        let (_, visited) = call(
+            db.clone(),
+            "POST",
+            "/api/articles/2/visit",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(visited["is_saved_for_later"], false);
+        assert_eq!(visited["is_read"], true);
+        let (_, later) = call(
+            db.clone(),
+            "GET",
+            "/api/articles?later=true&include_muted=true",
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(ids(&later), vec![1]);
     }
     #[tokio::test]
     async fn offset_baseline_exposes_shifts_and_preserves_ordering_contract() {
@@ -1267,6 +1425,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("v3.db");
         let c = open_db(&path, true).unwrap();
+        extensions::drop_for_legacy_fixture(&c);
         c.execute("UPDATE articles SET is_read=1,is_starred=1 WHERE id=1", [])
             .unwrap();
         for sql in [
