@@ -1,0 +1,4 @@
+## Decisions
+Canonical query keys are view, search, feed, folder, article, order, scope, any, exclude, published_from, published_to and feed_ids. Invalid values are discarded; feed takes precedence over folder. Unknown query keys are preserved. Default values are omitted except view. Existing APIs and CSRF-protected visit mutation are unchanged; no migration.
+
+History entries use opaque IDs and bounded process-memory snapshots of loaded items, cursor, total, selection and scroll. Snapshots are not persisted, are limited in count and rows, and reload may refetch. Popstate restores state without pushing; stale asynchronous responses are invalidated by existing generation counters. Deep links wait for settings and library before visiting. Article close retains the list and removes article from URL. Normal opening does not scroll the page.
