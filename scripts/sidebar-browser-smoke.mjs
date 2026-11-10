@@ -4,7 +4,7 @@ import {mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(new URL('../frontend/package.json',import.meta.url));
 const {chromium}=require('@playwright/test');
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,...(process.env.FEEDER_CHROMIUM_PATH?{executablePath:process.env.FEEDER_CHROMIUM_PATH}:{})});
 const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
 try {
  const context=await browser.newContext({viewport:{width:1280,height:900}});
@@ -66,7 +66,7 @@ try {
  await page.setViewportSize({width:390,height:844});assert.equal(await separator.isVisible(),false);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.getByLabel('テーマ',{exact:true}).selectOption('dark');assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark');
  // True touch pointer dispatch through Chromium, with normal touch action off handles.
- const mobile=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});const touch=await mobile.newPage();await touch.goto(origin);await touch.locator('[data-order-target="folder"]').first().waitFor();
+ const mobile=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});const touch=await mobile.newPage();await touch.goto(origin);await touch.getByRole('button',{name:'メニューを開く',exact:true}).tap();await touch.locator('[data-order-target="folder"]').first().waitFor();
  await touch.getByRole('button',{name:'並びCの操作',exact:true}).click();await touch.getByRole('button',{name:'編集',exact:true}).click();assert.equal(await touch.getByRole('dialog').getByLabel('フィードURL').inputValue(),'https://example.org/sidebar-c-new.xml');assert.equal(await touch.getByRole('dialog').getByLabel('個別の収集間隔（秒）').inputValue(),'300');assert.equal(await touch.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await touch.getByRole('dialog').getByRole('button',{name:'キャンセル'}).click();
  const touchFolders=await library(),moving=touchFolders.folders[0],dest=touchFolders.folders[1];
  const th=touch.locator(`[data-order-handle="folder-${moving.id}"]`),td=touch.locator(`[data-order-target="folder"][data-order-id="${dest.id}"]`);await th.scrollIntoViewIfNeeded();const ta=await th.boundingBox(),tb=await td.boundingBox();
@@ -76,6 +76,7 @@ try {
  assert.equal(await touch.locator('.source-button').first().evaluate(el=>getComputedStyle(el).touchAction),'auto');await mobile.close();
  const denied=await browser.newContext();await denied.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new Error('storage denied')}})});const deniedPage=await denied.newPage();await deniedPage.goto(origin);await deniedPage.getByRole('separator').press('ArrowRight');await deniedPage.locator('.article-card').first().waitFor();assert.equal(await deniedPage.getByRole('separator').getAttribute('aria-valuenow'),'260');await denied.close();
  const invalidContext=await browser.newContext({viewport:{width:1280,height:800}});await invalidContext.addInitScript(()=>localStorage.setItem('feeder-sidebar-width','999999'));const invalidPage=await invalidContext.newPage();await invalidPage.goto(origin);await invalidPage.getByRole('separator').waitFor();assert.equal(await invalidPage.getByRole('separator').getAttribute('aria-valuenow'),'250');await invalidContext.close();
+ await page.setViewportSize({width:1280,height:900});
  const globalUnread=page.locator('.filters button').filter({hasText:'未読'});await globalUnread.click();await globalUnread.locator('.count').waitFor();const unreadCount=await globalUnread.locator('.count').textContent();await page.getByRole('button',{name:`${names[0]}`,exact:true}).click();await page.getByRole('heading',{name:names[0],exact:true}).waitFor();assert.equal(await globalUnread.getAttribute('aria-current'),null);assert.equal(await globalUnread.locator('.count').textContent(),unreadCount);await globalUnread.click();assert.equal(await globalUnread.getAttribute('aria-current'),'page');
  assert.deepEqual(errors,[]);console.log('Sidebar browser passed: keyboard/mouse/touch reorder, collapsed destination, cancellation, menu movement, cross-session order, conflict recovery, resize restoration, mobile and denied storage.');
  await page.route('**/api/library',async route=>{const response=await route.fetch();const data=await response.json();data.folders=data.folders.map(f=>({...f,name:'非常に長いフォルダー名'.repeat(12)}));data.feeds=data.feeds.map(f=>({...f,title:'VeryLongUnbrokenFeedName'.repeat(12),paused:true}));await route.fulfill({response,json:data})});

@@ -41,3 +41,8 @@
   .workspace .filter { min-height: 44px; font-size: 13px; }
   .workspace .folder-toggle, .workspace .mini-menu, .workspace .order-handle { min-height: 44px; width: 36px; }
 }
+
+/* Editing dialogs must remain above the mobile drawer and its backdrop. */
+@media (max-width: 760px) {
+  .modal-backdrop { z-index: 30; }
+}
