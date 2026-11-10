@@ -12,6 +12,6 @@
 
 ## 3. Acceptance
 
-- [ ] 3.1 Test tampering/expiry/mismatched filters/timezone/source membership, insert/delete traversal, unchanged outside state and old API contracts.
-- [ ] 3.2 Run Linux browser/regression/restore acceptance including missing observer, failed second batch, explicit retry and mobile/themes.
+- [x] 3.1 Test tampering/expiry/mismatched filters/timezone/source membership, insert/delete traversal, unchanged outside state and old API contracts.
+- [x] 3.2 Run Linux browser/regression/restore acceptance including missing observer, failed second batch, explicit retry and mobile/themes.
 - [ ] 3.3 Update canonical specs and verification records, run strict validation and commit purpose-specific changes on dev.

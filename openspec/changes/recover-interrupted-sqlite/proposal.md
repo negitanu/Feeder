@@ -1,0 +1,2 @@
+# 中断されたSQLiteトランザクションからの安全な起動
+強制停止後にhot rollback journalが残ると、読み取り専用スキーマ検査がSQLITE_READONLY_ROLLBACKとなり起動できない。未知スキーマの無変更拒否を維持しながら復旧する。

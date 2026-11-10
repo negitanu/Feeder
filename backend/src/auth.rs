@@ -252,7 +252,9 @@ pub fn wrap(
                         *req.method(),
                         http::Method::GET | http::Method::HEAD | http::Method::OPTIONS
                     );
-                    let admin = path == "/api/keys" || path.starts_with("/api/keys/");
+                    let admin = path == "/api/keys"
+                        || path.starts_with("/api/keys/")
+                        || path == "/api/configuration/import";
                     let cross = req
                         .headers()
                         .get("sec-fetch-site")
@@ -1039,6 +1041,7 @@ mod tests {
             "/api/smart-folders",
             "/api/mute-rules",
             "/api/duplicates",
+            "/api/duplicates/members?article_id=1&before_id=2",
             "/api/digest",
             "/api/read-later",
             "/api/read-later/settings",
@@ -1046,6 +1049,7 @@ mod tests {
             "/api/collection/health",
             "/api/catchup",
             "/api/catchup/interests",
+            "/api/configuration/import",
             "/api/articles/1/revisions",
             "/api/articles/1/related",
         ];
@@ -1075,7 +1079,26 @@ mod tests {
                 "cross-origin GET {path}"
             );
         }
+        let blocked = router
+            .clone()
+            .oneshot(request(
+                "GET",
+                "/api/configuration/import",
+                host,
+                None,
+                None,
+                None,
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(blocked.status(), StatusCode::FORBIDDEN);
         let writes = [
+            (
+                "POST",
+                "/api/configuration/import",
+                r#"{"expected":{"reader":{"display_timezone":"UTC","default_view":"all"},"collection":{"enabled":true,"interval_seconds":900},"rate_limit":120,"folders":[]},"desired":{"reader":{"display_timezone":"UTC","default_view":"all"},"collection":{"enabled":true,"interval_seconds":900},"rate_limit":120,"folders":[]}}"#,
+            ),
             (
                 "POST",
                 "/api/smart-folders",
@@ -1464,6 +1487,60 @@ mod tests {
             StatusCode::OK
         );
         assert_eq!(access.sessions.lock().unwrap().len(), 1024);
+    }
+    #[tokio::test]
+    async fn public_social_create_requires_write_key_and_valid_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(
+            open_db(&dir.path().join("social.db"), false).unwrap(),
+        ));
+        let access = Access {
+            mode: Mode::Local,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        };
+        let router = wrap(
+            base_router(db.clone()),
+            db.clone(),
+            access,
+            "127.0.0.1:8080".parse().unwrap(),
+            None,
+        );
+        {
+            let conn = db.lock().unwrap();
+            for (token, scope) in [("social-read", "read"), ("social-write", "write")] {
+                conn.execute("INSERT INTO api_keys(name,prefix,token_hash,scope,expires_at) VALUES(?1,'test',?2,?3,datetime('now','+1 day'))", params![token,hash(token),scope]).unwrap();
+            }
+        }
+        for (token, expected) in [
+            ("social-read", StatusCode::FORBIDDEN),
+            ("social-write", StatusCode::BAD_REQUEST),
+        ] {
+            let mut req = request(
+                "POST",
+                "/api/v1/social/sources",
+                "127.0.0.1:8080",
+                None,
+                None,
+                None,
+                r#"{"provider":"mastodon","actor":"x","server":"http://127.0.0.1/path"}"#,
+            );
+            req.headers_mut().insert(
+                header::AUTHORIZATION,
+                format!("Bearer {token}").parse().unwrap(),
+            );
+            assert_eq!(
+                router.clone().oneshot(req).await.unwrap().status(),
+                expected
+            );
+        }
+        assert_eq!(
+            db.lock()
+                .unwrap()
+                .query_row("SELECT count(*) FROM social_sources", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
     #[tokio::test]
     async fn public_scope_expiry_and_rate_responses() {

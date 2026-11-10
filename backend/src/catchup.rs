@@ -506,9 +506,120 @@ async fn list(State(db): State<Db>, RawQuery(raw): RawQuery) -> Result<Json<Catc
         items,
     }))
 }
+#[derive(Serialize)]
+struct TopicTrend {
+    term: String,
+    current_count: usize,
+    previous_count: usize,
+    new_feed_ids: Vec<i64>,
+}
+#[derive(Serialize)]
+struct TopicTrends {
+    window_start: String,
+    window_end: String,
+    previous_start: String,
+    scanned: usize,
+    truncated: bool,
+    collection_incomplete: bool,
+    topics: Vec<TopicTrend>,
+}
+
+async fn topic_trends(
+    State(db): State<Db>,
+    RawQuery(raw): RawQuery,
+) -> Result<Json<TopicTrends>, StatusCode> {
+    let q = parse_query(raw)?;
+    let db = db.lock().map_err(collection::err)?;
+    for (table, id) in [("feeds", q.feed_id), ("folders", q.folder_id)] {
+        if let Some(id) = id
+            && !db
+                .query_row(
+                    &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id=?1)"),
+                    [id],
+                    |r| r.get::<_, bool>(0),
+                )
+                .map_err(collection::err)?
+        {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    let (end, start, previous_start): (String, String, String) = db.query_row(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now',?1),strftime('%Y-%m-%dT%H:%M:%fZ','now',?2)",
+        params![format!("-{} hours", q.hours), format!("-{} hours", q.hours * 2)], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    ).map_err(collection::err)?;
+    let prefs = preferences(&db).map_err(collection::err)?;
+    let mut topics: Vec<TopicTrend> = prefs
+        .terms
+        .iter()
+        .map(|term| TopicTrend {
+            term: term.clone(),
+            current_count: 0,
+            previous_count: 0,
+            new_feed_ids: Vec::new(),
+        })
+        .collect();
+    let mut current_feeds = vec![HashSet::new(); topics.len()];
+    let mut previous_feeds = vec![HashSet::new(); topics.len()];
+    let mut scanned = 0;
+    let mut truncated = false;
+    if !topics.is_empty() {
+        let sql = format!(
+            "SELECT articles.title, articles.content, articles.feed_id, julianday(articles.published)>=julianday(?2) FROM articles JOIN feeds ON feeds.id=articles.feed_id WHERE (?4 IS NULL OR articles.feed_id=?4) AND (?5 IS NULL OR feeds.folder_id=?5) AND NOT ({}) AND julianday(articles.published)>=julianday(?1) AND julianday(articles.published)<julianday(?3) ORDER BY julianday(articles.published) DESC, articles.id DESC LIMIT 10001",
+            crate::mute_rules::HIDDEN_SQL
+        );
+        let mut stmt = db.prepare(&sql).map_err(collection::err)?;
+        let mut rows = stmt
+            .query(params![previous_start, start, end, q.feed_id, q.folder_id])
+            .map_err(collection::err)?;
+        while let Some(row) = rows.next().map_err(collection::err)? {
+            if scanned == 10000 {
+                truncated = true;
+                break;
+            }
+            scanned += 1;
+            let title: String = row.get(0).map_err(collection::err)?;
+            let content: String = row.get(1).map_err(collection::err)?;
+            let feed_id: i64 = row.get(2).map_err(collection::err)?;
+            let current: bool = row.get(3).map_err(collection::err)?;
+            let matched = matched_terms(&title, &content, &prefs.terms);
+            for (i, topic) in topics.iter_mut().enumerate() {
+                if matched.contains(&topic.term) {
+                    if current {
+                        topic.current_count += 1;
+                        current_feeds[i].insert(feed_id);
+                    } else {
+                        topic.previous_count += 1;
+                        previous_feeds[i].insert(feed_id);
+                    }
+                }
+            }
+        }
+    }
+    for (i, topic) in topics.iter_mut().enumerate() {
+        topic.new_feed_ids = current_feeds[i]
+            .difference(&previous_feeds[i])
+            .copied()
+            .collect();
+        topic.new_feed_ids.sort_unstable();
+    }
+    let collection_incomplete =
+        crate::collection_runtime::is_incomplete(&db, q.feed_id, q.folder_id)
+            .map_err(collection::err)?;
+    Ok(Json(TopicTrends {
+        window_start: start,
+        window_end: end,
+        previous_start,
+        scanned,
+        truncated,
+        collection_incomplete,
+        topics,
+    }))
+}
+
 pub fn routes() -> Router<Db> {
     Router::new()
         .route("/api/catchup", get(list))
+        .route("/api/catchup/topics", get(topic_trends))
         .route(
             "/api/catchup/interests",
             get(get_interests).put(put_interests),
@@ -532,6 +643,45 @@ mod tests {
         migrate_catchup(&tx).unwrap();
         tx.commit().unwrap();
         Arc::new(Mutex::new(db))
+    }
+    #[tokio::test]
+    async fn topic_trends_compare_saved_articles_and_scope() {
+        let db = setup();
+        {
+            let conn = db.lock().unwrap();
+            conn.execute("UPDATE catchup_preferences SET terms=?1", [r#"["AI"]"#])
+                .unwrap();
+            conn.execute_batch("INSERT INTO articles(id,title,content,url,published,is_read,feed_id) VALUES
+                (1,'AI','','https://one.test/1',datetime('now','-1 hour'),1,1),
+                (2,'ai','','https://two.test/2',datetime('now','-2 hours'),0,2),
+                (3,'AI','','https://one.test/3',datetime('now','-25 hours'),0,1),
+                (4,'AI hidden','','https://two.test/4',datetime('now','-1 hour'),0,2);
+                INSERT INTO mute_rules(name,term,field,enabled,revision) VALUES('hidden','hidden','title',1,1);").unwrap();
+        }
+        let result = topic_trends(State(db.clone()), RawQuery(None))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(
+            (
+                result.topics[0].current_count,
+                result.topics[0].previous_count
+            ),
+            (2, 1)
+        );
+        assert_eq!(result.topics[0].new_feed_ids, vec![2]);
+        let scoped = topic_trends(State(db), RawQuery(Some("feed_id=1".into())))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(
+            (
+                scoped.topics[0].current_count,
+                scoped.topics[0].previous_count
+            ),
+            (1, 1)
+        );
+        assert!(scoped.topics[0].new_feed_ids.is_empty());
     }
     #[test]
     fn ranking_literal_unicode_and_host_cap() {

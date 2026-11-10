@@ -1,0 +1,2 @@
+# 設計と受入
+既存フィードと記事のsource_typeはRSSならrss、SNSならsocial_sources.providerのmastodonまたはblueskyを返す。記事一覧はsource_type=rss/mastodon/blueskyで正しく絞る。既存RSS形式・認証と状態操作を維持し、SNS新規登録APIは追加しない。合成DBで各種別の一覧・詳細・絞込、公開API認証と既存回帰を確認する。

@@ -46,6 +46,10 @@ export default function CollectionPanel({ folders, onChanged, onCreateFolder }: 
   const settingsDirtyRef = useRef(false)
 
   useEffect(() => { api<Settings>('/api/collection/settings', undefined, 'GET').then(value => { if (!settingsDirtyRef.current) { setSettings(value); setIntervalDraft(String(value.interval_seconds)) } }).catch(e => setError(e.message)).finally(() => setSettingsLoading(false)) }, [])
+  useEffect(() => {
+    const refresh = () => { if (settingsDirtyRef.current) { setSettingsNotice('設定が読み込まれました。未保存の入力は維持しています。保存すると入力内容が優先されます。'); return }; void api<Settings>('/api/collection/settings', undefined, 'GET').then(value => { if (!settingsDirtyRef.current) { setSettings(value); setIntervalDraft(String(value.interval_seconds)) } }).catch(e => setError(e.message)) }
+    window.addEventListener('feeder-configuration-imported', refresh); return () => window.removeEventListener('feeder-configuration-imported', refresh)
+  }, [])
   const clearPlan = () => { previewRun.current++; setPreview(null) }
   async function discover(e: React.FormEvent) {
     e.preventDefault(); const run = ++discoveryRun.current; setBusy(true); setError(''); setCandidates([]); setCandidate(''); clearPlan()

@@ -51,3 +51,7 @@ The panel GETs on mount and when `refreshKey` changes, and offers all/error/stal
 ## Verification status
 
 Backend unit tests use an in-memory synthetic SQLite schema and `example.invalid` URLs. The collection-health tests exercise migration and legacy-success seeding, failed/successful attempt transitions, legacy fallback, paused/global-disabled due times, per-feed override, cascade deletion and the 1000-row response limit. The full backend `cargo test` suite passed (75 tests in the latest checkout run). The frontend production build (`npm run build`, including TypeScript) passed. Browser interaction, visual layout, and assistive-technology checks have not been run for this change. No real subscriptions or secrets are fixtures.
+
+## 収集失敗の案内
+
+新しい失敗は配信元のHTTPステータス、名前解決、接続、タイムアウト、受信、転送、安全制限、サイズ超過、フィード解析を安全な固定コードで記録し、設定の収集状態に原因と確認先を示す。配信元の応答本文・URLや例外の詳細は診断として追加保存しない。過去の詳細がないエラーは原因不明と表示する。最後の成功と次回予定を併記し、購読管理へ移動できる。停止中のフィードも直近のエラーを表示する。待機中の再試行は無効であり、429/503の `Retry-After` を維持する。

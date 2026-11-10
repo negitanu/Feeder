@@ -16,13 +16,14 @@
 - `POST /api/v1/feeds`: `{url, folder?, source_type?: "rss"}`。安全な初回取得に成功してから購読・フォルダー・記事を一括保存し201を返します。
 - `PATCH /api/v1/feeds/{id}`: `title`、`folder`、`enabled`、RSSの `url`、`poll_interval` の部分更新。収集間隔は60〜86400秒の整数、`null` は全体設定の継承です。
 - `DELETE /api/v1/feeds/{id}` と `POST /api/v1/feeds/{id}/refresh`: 削除と安全な手動取得。停止中の購読の手動取得は409です。
+- `POST /api/v1/social/sources`: writeキーで `{"provider":"mastodon","actor":"name","server":"https://example.org"}` または `{"provider":"bluesky","actor":"name.bsky.social"}` を指定し、公開SNS購読を作成します。正常時は201と購読情報を返し、収集は通常workerが実行します。
 - `GET /api/v1/articles` と `GET /api/v1/articles/{id}`: 記事の一覧・詳細。`PATCH /api/v1/articles/{id}` は `{is_read?, is_starred?}` のJSON booleanだけを受け付けます。閲覧履歴は作りません。
 
-記事一覧はID降順で、`limit` 1〜100（既定30）、`feed`、`is_read`、`is_starred`、`q`（最大200文字の文字列検索）、`source_type=rss`、`before_id` または `after_id` を使えます。`after_id=0` からの取得はID昇順で、`has_more`、`next_before_id`、`next_after_id` により継続できます。重複・未知・矛盾する条件は拒否します。応答は `data`、エラーは `error: {code, message}` にまとめます。
+記事一覧はID降順で、`limit` 1〜100（既定30）、`feed`、`is_read`、`is_starred`、`q`（最大200文字の文字列検索）、`source_type=rss`／`mastodon`／`bluesky`、`before_id` または `after_id` を使えます。`after_id=0` からの取得はID昇順で、`has_more`、`next_before_id`、`next_after_id` により継続できます。重複・未知・矛盾する条件は拒否します。応答は `data`、エラーは `error: {code, message}` にまとめます。
 
 URLは公開HTTP(S)形式で、認証情報やローカルアドレスを含められません。変更時にはネットワーク取得をせず、既存のフィード・記事IDと状態を維持し、前URLのETag・Last-Modified・最終確認日時・収集エラーを消します。次の収集時にDNSを検証します。正規化後のURLが同じ場合は既存の収集状態を維持します。重複URLまたは収集中の編集・削除は409で拒否し、同時に指定した変更も保存しません。
 
-本文はFeederのプレーンテキストです。公開日時は現段階ではFeederに保存した日時表現です。フォルダーなしはnullです。SNS・ページ観測・研究系API、旧版の全フィールドは未完了です。旧版API全体の互換性を完了したとは扱いません。旧データ・既存キーの移行は対象外です。
+本文はFeederのプレーンテキストです。公開日時は現段階ではFeederに保存した日時表現です。フォルダーなしはnullです。SNSの情報源と記事は `source_type` に `mastodon` または `bluesky` を返し、記事一覧を種別で絞れます。ページ観測・研究系API、旧版の全フィールドは対応していません。旧版API全体の互換性を完了したとは扱いません。旧データ・既存キーの移行は対象外です。
 
 ## 公開構成
 

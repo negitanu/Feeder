@@ -604,6 +604,39 @@ pub(super) fn public_ip(ip: IpAddr) -> bool {
     }
 }
 tokio::task_local! { static RETRY_HINT: std::cell::Cell<Option<i64>>; }
+tokio::task_local! { static FAILURE_DETAIL: std::cell::Cell<Option<FailureDetail>>; }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FailureDetail {
+    Upstream(u16),
+    Dns,
+    Connection,
+    Timeout,
+    Body,
+    Redirect,
+    UnsafeTarget,
+    TooLarge,
+    InvalidFeed,
+}
+impl FailureDetail {
+    fn code(self) -> String {
+        match self {
+            Self::Upstream(status) => format!("upstream_http_{status}"),
+            Self::Dns => "dns".into(),
+            Self::Connection => "connection".into(),
+            Self::Timeout => "timeout".into(),
+            Self::Body => "body".into(),
+            Self::Redirect => "redirect".into(),
+            Self::UnsafeTarget => "unsafe_target".into(),
+            Self::TooLarge => "too_large".into(),
+            Self::InvalidFeed => "invalid_feed".into(),
+        }
+    }
+}
+fn failure(detail: FailureDetail, status: StatusCode) -> StatusCode {
+    let _ = FAILURE_DETAIL.try_with(|value| value.set(Some(detail)));
+    status
+}
 
 fn record_retry_hint(status: StatusCode, headers: &HeaderMap, now: i64) {
     if matches!(status.as_u16(), 429 | 503)
@@ -703,7 +736,7 @@ pub(super) async fn fetch(
 ) -> Result<Fetched, StatusCode> {
     tokio::time::timeout(Duration::from_secs(10), fetch_inner(start, etag, modified))
         .await
-        .map_err(|_| StatusCode::BAD_GATEWAY)?
+        .map_err(|_| failure(FailureDetail::Timeout, StatusCode::BAD_GATEWAY))?
 }
 pub(super) struct ResponseBody {
     pub final_url: Url,
@@ -713,9 +746,12 @@ pub(super) struct ResponseBody {
     pub modified: Option<String>,
 }
 pub(super) async fn fetch_body(start: &str) -> Result<ResponseBody, StatusCode> {
-    tokio::time::timeout(Duration::from_secs(10), fetch_body_inner(start, None, None))
-        .await
-        .map_err(|_| StatusCode::BAD_GATEWAY)?
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        fetch_body_inner(start, None, None, 2 * 1024 * 1024),
+    )
+    .await
+    .map_err(|_| failure(FailureDetail::Timeout, StatusCode::BAD_GATEWAY))?
 }
 fn normalized_url(raw: &str) -> Result<Url, StatusCode> {
     let mut url = Url::parse(raw.trim()).map_err(|_| StatusCode::BAD_REQUEST)?;
@@ -727,7 +763,7 @@ async fn fetch_inner(
     etag: Option<&str>,
     modified: Option<&str>,
 ) -> Result<Fetched, StatusCode> {
-    let response = fetch_body_inner(start, etag, modified).await?;
+    let response = fetch_body_inner(start, etag, modified, 8 * 1024 * 1024).await?;
     let parsed = match response.body {
         Some(body) => Some(parse_feed(&body, &response.final_url)?),
         None => None,
@@ -751,12 +787,18 @@ pub(super) fn parse_feed(body: &[u8], url: &Url) -> Result<feed_rs::model::Feed,
         .build();
     let parsed = parser
         .parse(body)
-        .map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+        .map_err(|_| failure(FailureDetail::InvalidFeed, StatusCode::UNPROCESSABLE_ENTITY))?;
     if parsed.entries.iter().any(|entry| entry.id.is_empty()) {
-        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        return Err(failure(
+            FailureDetail::InvalidFeed,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ));
     }
-    if parsed.entries.len() > 500 {
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    if parsed.entries.len() > 10_000 {
+        return Err(failure(
+            FailureDetail::TooLarge,
+            StatusCode::PAYLOAD_TOO_LARGE,
+        ));
     }
     Ok(parsed)
 }
@@ -782,10 +824,20 @@ async fn host_permit(host: &str) -> Result<tokio::sync::OwnedSemaphorePermit, St
     };
     semaphore.acquire_owned().await.map_err(err)
 }
+fn feed_http_client(host: &str, addresses: &[SocketAddr]) -> Result<reqwest::Client, StatusCode> {
+    reqwest::Client::builder()
+        .user_agent(concat!("Feeder/", env!("CARGO_PKG_VERSION")))
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve_to_addrs(host, addresses)
+        .build()
+        .map_err(err)
+}
 async fn fetch_body_inner(
     start: &str,
     etag: Option<&str>,
     modified: Option<&str>,
+    max_bytes: usize,
 ) -> Result<ResponseBody, StatusCode> {
     let mut url = normalized_url(start)?;
     for redirects in 0..=5 {
@@ -794,7 +846,10 @@ async fn fetch_body_inner(
             || url.password().is_some()
             || url.host_str().is_none()
         {
-            return Err(StatusCode::BAD_REQUEST);
+            return Err(failure(
+                FailureDetail::UnsafeTarget,
+                StatusCode::BAD_REQUEST,
+            ));
         }
         let host = url.host_str().unwrap().trim_matches(['[', ']']).to_owned();
         // A permit covers DNS, the request and response body, including each redirect hop.
@@ -803,17 +858,15 @@ async fn fetch_body_inner(
         let port = url.port_or_known_default().ok_or(StatusCode::BAD_REQUEST)?;
         let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
             .await
-            .map_err(|_| StatusCode::BAD_GATEWAY)?
+            .map_err(|_| failure(FailureDetail::Dns, StatusCode::BAD_GATEWAY))?
             .collect();
         if addresses.is_empty() || addresses.iter().any(|a| !public_ip(a.ip())) {
-            return Err(StatusCode::BAD_REQUEST);
+            return Err(failure(
+                FailureDetail::UnsafeTarget,
+                StatusCode::BAD_REQUEST,
+            ));
         }
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .resolve_to_addrs(&host, &addresses)
-            .build()
-            .map_err(err)?;
+        let client = feed_http_client(&host, &addresses)?;
         let mut request = client.get(url.clone());
         if let Some(v) = etag {
             request = request.header(reqwest::header::IF_NONE_MATCH, v)
@@ -821,19 +874,30 @@ async fn fetch_body_inner(
         if let Some(v) = modified {
             request = request.header(reqwest::header::IF_MODIFIED_SINCE, v)
         }
-        let response = request.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        let response = request.send().await.map_err(|error| {
+            failure(
+                if error.is_timeout() {
+                    FailureDetail::Timeout
+                } else {
+                    FailureDetail::Connection
+                },
+                StatusCode::BAD_GATEWAY,
+            )
+        })?;
         if response.status().is_redirection()
             && response.status() != reqwest::StatusCode::NOT_MODIFIED
         {
             if redirects == 5 {
-                return Err(StatusCode::BAD_GATEWAY);
+                return Err(failure(FailureDetail::Redirect, StatusCode::BAD_GATEWAY));
             }
             let location = response
                 .headers()
                 .get(reqwest::header::LOCATION)
                 .and_then(|v| v.to_str().ok())
-                .ok_or(StatusCode::BAD_GATEWAY)?;
-            url = url.join(location).map_err(|_| StatusCode::BAD_GATEWAY)?;
+                .ok_or_else(|| failure(FailureDetail::Redirect, StatusCode::BAD_GATEWAY))?;
+            url = url
+                .join(location)
+                .map_err(|_| failure(FailureDetail::Redirect, StatusCode::BAD_GATEWAY))?;
             url.set_fragment(None);
             drop(permit);
             continue;
@@ -853,13 +917,19 @@ async fn fetch_body_inner(
                 .map(|d| d.as_secs().min(i64::MAX as u64) as i64)
                 .unwrap_or(0);
             record_retry_hint(response.status(), response.headers(), now);
-            return Err(StatusCode::BAD_GATEWAY);
+            return Err(failure(
+                FailureDetail::Upstream(response.status().as_u16()),
+                StatusCode::BAD_GATEWAY,
+            ));
         }
         if response
             .content_length()
-            .is_some_and(|n| n > 2 * 1024 * 1024)
+            .is_some_and(|n| n > max_bytes as u64)
         {
-            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            return Err(failure(
+                FailureDetail::TooLarge,
+                StatusCode::PAYLOAD_TOO_LARGE,
+            ));
         }
         let content_type = response
             .headers()
@@ -879,9 +949,12 @@ async fn fetch_body_inner(
         let mut stream = response.bytes_stream();
         let mut body = Vec::new();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|_| StatusCode::BAD_GATEWAY)?;
-            if body.len() + chunk.len() > 2 * 1024 * 1024 {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            let chunk = chunk.map_err(|_| failure(FailureDetail::Body, StatusCode::BAD_GATEWAY))?;
+            if body.len() + chunk.len() > max_bytes {
+                return Err(failure(
+                    FailureDetail::TooLarge,
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                ));
             }
             body.extend_from_slice(&chunk)
         }
@@ -1097,19 +1170,26 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
         tx.commit().map_err(err)?;
         (f.url, e, m, social, checkpoint)
     };
-    let (result, retry_hint) = RETRY_HINT
-        .scope(std::cell::Cell::new(None), async {
-            let result = if let Some(source) = social {
-                super::social::fetch_pages(source, checkpoint)
-                    .await
-                    .map(|(f, s)| (f, Some(s)))
-            } else {
-                fetch(&url, etag.as_deref(), modified.as_deref())
-                    .await
-                    .map(|f| (f, None))
-            };
-            (result, RETRY_HINT.with(|hint| hint.get()))
-        })
+    let (result, retry_hint, detail) = FAILURE_DETAIL
+        .scope(
+            std::cell::Cell::new(None),
+            RETRY_HINT.scope(std::cell::Cell::new(None), async {
+                let result = if let Some(source) = social {
+                    super::social::fetch_pages(source, checkpoint)
+                        .await
+                        .map(|(f, s)| (f, Some(s)))
+                } else {
+                    fetch(&url, etag.as_deref(), modified.as_deref())
+                        .await
+                        .map(|f| (f, None))
+                };
+                (
+                    result,
+                    RETRY_HINT.with(|hint| hint.get()),
+                    FAILURE_DETAIL.with(|value| value.get()),
+                )
+            }),
+        )
         .await;
     let mut db = db.lock().map_err(err)?;
     let outcome = match result {
@@ -1117,7 +1197,7 @@ pub(super) async fn refresh_feed(db: Db, id: i64, scheduled: bool) -> Result<Fee
             apply_refresh_with_checkpoint(&mut db, id, result, Some(&owner), checkpoint)
         }
         Err(status) => {
-            apply_refresh_failure_with_retry(&mut db, id, &owner, status, retry_hint)?;
+            apply_refresh_failure_with_detail(&mut db, id, &owner, status, retry_hint, detail)?;
             Err(status)
         }
     };
@@ -1227,6 +1307,7 @@ fn apply_refresh_failure(
 ) -> Result<(), StatusCode> {
     apply_refresh_failure_with_retry(db, id, owner, status, None)
 }
+#[cfg(test)]
 fn apply_refresh_failure_with_retry(
     db: &mut Connection,
     id: i64,
@@ -1234,10 +1315,27 @@ fn apply_refresh_failure_with_retry(
     status: StatusCode,
     retry_hint: Option<i64>,
 ) -> Result<(), StatusCode> {
+    apply_refresh_failure_with_detail(db, id, owner, status, retry_hint, None)
+}
+fn apply_refresh_failure_with_detail(
+    db: &mut Connection,
+    id: i64,
+    owner: &str,
+    status: StatusCode,
+    retry_hint: Option<i64>,
+    detail: Option<FailureDetail>,
+) -> Result<(), StatusCode> {
     let tx = db
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(err)?;
-    let changed = tx.execute("UPDATE feeds SET last_checked=datetime('now'),last_error=? WHERE id=? AND paused=0 AND EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![format!("Refresh failed ({})", status.as_u16()),id,id,owner]).map_err(err)?;
+    let message = format!(
+        "Refresh failed ({}){}",
+        status.as_u16(),
+        detail
+            .map(|d| format!("; diagnostic={}", d.code()))
+            .unwrap_or_default()
+    );
+    let changed = tx.execute("UPDATE feeds SET last_checked=datetime('now'),last_error=? WHERE id=? AND paused=0 AND EXISTS(SELECT 1 FROM refresh_leases WHERE feed_id=? AND owner=? AND expires_at>unixepoch())", params![message,id,id,owner]).map_err(err)?;
     if changed == 1 {
         super::collection_health::record_attempt(&tx, id, false).map_err(err)?;
         if runtime_table_exists(&tx).map_err(err)? {
@@ -1352,6 +1450,78 @@ pub fn routes() -> Router<Db> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn failure_diagnostics_are_isolated_and_bounded() {
+        let first = FAILURE_DETAIL.scope(std::cell::Cell::new(None), async {
+            assert_eq!(
+                failure(FailureDetail::Upstream(403), StatusCode::BAD_GATEWAY),
+                StatusCode::BAD_GATEWAY
+            );
+            tokio::task::yield_now().await;
+            FAILURE_DETAIL.with(|detail| detail.get())
+        });
+        let second = FAILURE_DETAIL.scope(std::cell::Cell::new(None), async {
+            let url = Url::parse("https://example.test/rss").unwrap();
+            assert!(parse_feed(b"not a feed", &url).is_err());
+            tokio::task::yield_now().await;
+            FAILURE_DETAIL.with(|detail| detail.get())
+        });
+        let (first, second) = tokio::join!(first, second);
+        assert_eq!(first, Some(FailureDetail::Upstream(403)));
+        assert_eq!(second, Some(FailureDetail::InvalidFeed));
+        assert_eq!(first.unwrap().code(), "upstream_http_403");
+    }
+    #[tokio::test]
+    async fn feed_requests_identify_the_application() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut buffer = [0; 4096];
+            let len = socket.read(&mut buffer).unwrap();
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .unwrap();
+            String::from_utf8(buffer[..len].to_vec()).unwrap()
+        });
+        let client = feed_http_client("fixture.test", &[address]).unwrap();
+        client
+            .get(format!("http://fixture.test:{}/", address.port()))
+            .send()
+            .await
+            .unwrap();
+        let headers = server.join().unwrap().to_ascii_lowercase();
+        assert!(headers.contains(&format!(
+            "user-agent: feeder/{}\r\n",
+            env!("CARGO_PKG_VERSION")
+        )));
+    }
+    #[test]
+    fn large_rss_is_bounded_by_entry_count() {
+        let make_feed = |count| {
+            let mut xml = String::from(
+                "<rss version='2.0'><channel><title>Fixture</title><link>https://example.test/</link><description>Fixture</description>",
+            );
+            for i in 0..count {
+                xml.push_str(&format!("<item><guid>{i}</guid><title>Item {i}</title><link>https://example.test/{i}</link></item>"));
+            }
+            xml.push_str("</channel></rss>");
+            xml
+        };
+        let url = Url::parse("https://example.test/rss").unwrap();
+        assert_eq!(
+            parse_feed(make_feed(5_500).as_bytes(), &url)
+                .unwrap()
+                .entries
+                .len(),
+            5_500
+        );
+        assert_eq!(
+            parse_feed(make_feed(10_001).as_bytes(), &url).unwrap_err(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+    }
     #[tokio::test]
     async fn ordering_is_atomic_and_lifecycle_appends() {
         let dir = tempfile::tempdir().unwrap();
@@ -2037,14 +2207,21 @@ mod tests {
                     .unwrap(),
                 0
             );
-            apply_refresh_failure_with_retry(
+            apply_refresh_failure_with_detail(
                 &mut c,
                 1,
                 "owner",
                 StatusCode::BAD_GATEWAY,
                 Some(deadline),
+                Some(FailureDetail::Upstream(429)),
             )
             .unwrap();
+            assert_eq!(
+                c.query_row("SELECT last_error FROM feeds WHERE id=1", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "Refresh failed (502); diagnostic=upstream_http_429"
+            );
             assert_eq!(
                 c.query_row(
                     "SELECT next_retry FROM collection_runtime WHERE feed_id=1",

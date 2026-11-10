@@ -9,6 +9,7 @@ type ArticleBulkActionsProps = {
   busy: boolean
   onApply: (state: ArticleState) => Promise<void>
   onClear: () => void
+  onExport: () => void
 }
 
 const actionStates: Record<Exclude<Action, ''>, ArticleState> = {
@@ -18,7 +19,7 @@ const actionStates: Record<Exclude<Action, ''>, ArticleState> = {
   unstar: { starred: false },
 }
 
-function ArticleBulkActions({ count, busy, onApply, onClear }: ArticleBulkActionsProps) {
+function ArticleBulkActions({ count, busy, onApply, onClear, onExport }: ArticleBulkActionsProps) {
   const [action, setAction] = useState<Action>('')
   const [applying, setApplying] = useState(false)
   const applyingRef = useRef(false)
@@ -70,6 +71,7 @@ function ArticleBulkActions({ count, busy, onApply, onClear }: ArticleBulkAction
       <button type="button" disabled={disabled} onClick={clearSelection}>
         選択解除
       </button>
+      <button type="button" disabled={disabled} onClick={onExport}>リンクを書き出す</button>
     </div>
   )
 }

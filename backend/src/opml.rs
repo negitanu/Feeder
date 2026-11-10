@@ -485,6 +485,57 @@ mod tests {
         assert!(safe_url("http://localhost/feed").is_none());
     }
     #[tokio::test]
+    async fn bulk_import_preserves_existing_and_nested_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(
+            open_db(&dir.path().join("opml.db"), false).unwrap(),
+        ));
+        let mut xml = String::from("<opml><body><outline text='Tech'><outline text='Security'>");
+        for i in 0..950 {
+            xml.push_str(&format!(
+                "<outline text='Feed {i}' xmlUrl='https://example.invalid/feed/{i}'/>"
+            ));
+        }
+        xml.push_str("<outline text='Duplicate' xmlUrl='https://example.invalid/feed/0#fragment'/></outline></outline></body></opml>");
+        let preview = preview(
+            State(db.clone()),
+            HeaderMap::new(),
+            Json(ImportInput { xml: xml.clone() }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!((preview.new, preview.duplicates), (950, 1));
+        assert_eq!(
+            db.lock()
+                .unwrap()
+                .query_row("SELECT count(*) FROM feeds", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        let result = import(
+            State(db.clone()),
+            HeaderMap::new(),
+            Json(ImportInput { xml: xml.clone() }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!((result.added, result.duplicates), (950, 1));
+        {
+            let conn = db.lock().unwrap();
+            assert_eq!(conn.query_row("SELECT count(*) FROM feeds f JOIN folders d ON d.id=f.folder_id WHERE d.name='Tech/Security' AND f.paused=0", [], |r| r.get::<_, i64>(0)).unwrap(), 950);
+        }
+        let second = import(State(db), HeaderMap::new(), Json(ImportInput { xml }))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(
+            (second.added, second.existing, second.duplicates),
+            (0, 950, 1)
+        );
+    }
+    #[tokio::test]
     async fn preview_and_import_are_explicit_and_collection_ready() {
         use tower::ServiceExt;
         let mut conn = Connection::open_in_memory().unwrap();

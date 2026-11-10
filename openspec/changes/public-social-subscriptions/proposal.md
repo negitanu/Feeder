@@ -1,0 +1,2 @@
+# 公開APIからのSNS購読
+Bearer APIでMastodonとBlueskyの公開アカウントを購読できるようにする。

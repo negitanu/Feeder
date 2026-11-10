@@ -101,6 +101,7 @@ export default function CatchupPanel({ onOpen, feeds, folders, timezone, refresh
   if (source.startsWith('feed:')) params.set('feed_id', source.slice(5))
   if (source.startsWith('folder:')) params.set('folder_id', source.slice(7))
   const query = useCatchupQuery<CatchupResult>(`/api/catchup?${params}`, refreshKey)
+  const trends = useCatchupQuery<{ window_start: string; window_end: string; previous_start: string; scanned: number; truncated: boolean; collection_incomplete: boolean; topics: { term: string; current_count: number; previous_count: number; new_feed_ids: number[] }[] }>(`/api/catchup/topics?${params}`, refreshKey)
   const [completed, setCompleted] = useState<Completed[]>([])
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -132,7 +133,7 @@ export default function CatchupPanel({ onOpen, feeds, folders, timezone, refresh
   return <section className="catchup-panel catchup-surface" aria-labelledby={`${id}-title`}>
     <header className="catchup-heading"><div><h2 id={`${id}-title`}><ListChecks size={20} aria-hidden="true" />キャッチアップ</h2>
       <p className="catchup-note">未読と読んだ後の更新から、いま読む記事を選びます。</p></div>
-      <button ref={refreshButton} type="button" disabled={pending !== null} onClick={query.reload}><RefreshCw size={16} aria-hidden="true" />再読み込み</button>
+      <button ref={refreshButton} type="button" disabled={pending !== null} onClick={() => { query.reload(); trends.reload() }}><RefreshCw size={16} aria-hidden="true" />再読み込み</button>
     </header>
     <div className="catchup-controls">
       <label className="catchup-field">期間<select value={hours} onChange={event => setHours(Number(event.target.value) as 24 | 168)}><option value={24}>過去24時間</option><option value={168}>過去7日間</option></select></label>
@@ -142,7 +143,22 @@ export default function CatchupPanel({ onOpen, feeds, folders, timezone, refresh
         {feeds.map(feed => <option key={`feed:${feed.id}`} value={`feed:${feed.id}`}>フィード: {feed.title}</option>)}
       </select></label>
     </div>
-    <details className="catchup-settings"><summary>共有の関心設定</summary><InterestSettings feeds={feeds} onSaved={query.reload} /></details>
+    <details className="catchup-settings"><summary>共有の関心設定</summary><InterestSettings feeds={feeds} onSaved={() => { query.reload(); trends.reload() }} /></details>
+    <section className="catchup-coverage" aria-label="関心語の動向">
+      <h3>関心語の動向</h3>
+      <p className="catchup-note">上で選んだ期間・対象の保存記事を、直前の同じ長さの期間と比較します。タイトル・本文の文字列一致で、既読・確認済みも含み、ミュート記事は除きます。関連記事は統合しません。</p>
+      {trends.loading && <p role="status">動向を読み込み中…</p>}
+      {trends.error && <p className="catchup-error" role="alert">動向: {trends.error} <button type="button" onClick={trends.reload}>再読み込み</button></p>}
+      {trends.data && <div aria-busy={trends.loading}>
+        <p className="catchup-note">今回: {formatArticlePublished(trends.data.window_start, timezone)} 〜 {formatArticlePublished(trends.data.window_end, timezone)}。前回: {formatArticlePublished(trends.data.previous_start, timezone)} 〜 {formatArticlePublished(trends.data.window_start, timezone)}。評価 {trends.data.scanned}記事。</p>
+        {trends.data.truncated && <p className="catchup-warning">評価上限に達したため、件数と新配信元の比較は不完全です。</p>}
+        {trends.data.collection_incomplete && <p className="catchup-warning">収集停止・待機・取得失敗などにより、取得できていない記事がある可能性があります。</p>}
+        {trends.data.topics.length === 0 ? <p>共有の関心設定に語句を追加すると動向を表示します。</p> : <ul>{trends.data.topics.map(topic => <li key={topic.term}>
+          <strong>{topic.term}</strong>: {topic.current_count}件（前期間 {topic.previous_count}件、{topic.current_count - topic.previous_count > 0 ? '+' : ''}{topic.current_count - topic.previous_count}件）
+          <br /><span>新しい配信元: {topic.new_feed_ids.length ? topic.new_feed_ids.map(feedId => feeds.find(feed => feed.id === feedId)?.title ?? `#${feedId}`).join('、') : 'なし'}</span>
+        </li>)}</ul>}
+      </div>}
+    </section>
     <p className="catchup-note">確認・見送りはこの Reader で共有され、現在の記事の版に適用されます。既読やスターとは別に保存します。</p>
     {query.loading && <p role="status">候補を読み込み中…</p>}
     {query.error && <p className="catchup-error" role="alert">{query.error} 表示が残っている場合は前回の結果です。</p>}

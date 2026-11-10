@@ -39,25 +39,64 @@ SIGTERM/SIGINT で新規処理を止め、上限付きの実行中処理を終�
 
 ## 更新と永続データ
 
+更新前には、稼働中のイメージと `/data` 全体を保全します。SQLiteを含むため、Webとworkerを停止してから取得します。次の操作はリポジトリのルートで実行し、失敗した場合は続けず原因を確認してください。実データを含むバックアップはGitに追加せず、アクセスを制限した場所に保管します。
+
+```sh
+# イメージ名は更新ごとに変え、前回の退避を上書きしない。
+docker tag feeder:local feeder:before-update-YYYYMMDD
+mkdir -p backups
+# mktempが新規ディレクトリを作るので既存バックアップを上書きしない。
+backup_dir=$(mktemp -d backups/feeder-update-XXXXXXXX)
+docker compose stop worker web
+docker compose run --rm --no-deps -T --entrypoint tar web -C /data -czf - . > "$backup_dir/feeder-data.tar.gz"
+python3 scripts/verify-backup.py "$backup_dir/feeder-data.tar.gz"
+```
+
+検証が失敗したアーカイブは復元に使わず、停止状態、ディスク空き容量、アーカイブを確認して取得し直します。取得を中断して通常運転へ戻す場合、変更前のイメージ・元volumeのまま `docker compose start --wait web worker` を実行し、`docker compose ps` と画面で稼働を確認します。元々停止していたサービスは起動せず元の状態に戻してください。検証はgzipのCRC、危険なパス・リンク・重複、SQLite整合性と外部キー、主要テーブルを確認します。非空のWAL・SHM・rollback journalは拒否します。**全ファイルの意味やバックアップの真正性、完全なスキーマ互換性を保証するものではありません**。信頼できる保存元を使い、次の別volumeでの復元も確認してください。設定JSONやOPMLは完全バックアップの代わりにはなりません。
+
+### 別volumeでの復元確認
+
+以下は新規の検証専用volumeを作る例です。`backup_dir` は上記の値を使用します。指定名のvolumeが存在する場合は中断します。信頼でき、上記検証に成功したアーカイブだけを使ってください。`--no-same-owner` で元の任意UIDを復元せず、Feeder用の所有者を設定します。
+
+```sh
+(
+set -eu
+restore_volume="feeder-restore-check-$(date +%Y%m%d%H%M%S)"
+if docker volume inspect "$restore_volume" >/dev/null 2>&1; then
+  echo '同名volumeが既にあります。名前を変更して中断してください。' >&2
+  exit 1
+fi
+docker volume create "$restore_volume"
+docker run --rm -i --user 0 --entrypoint /bin/sh -v "$restore_volume:/data" feeder:local \
+  -c 'tar --no-same-owner --no-same-permissions -C /data -xzf - && chown -R 10001:10001 /data' < "$backup_dir/feeder-data.tar.gz"
+# 外部収集を行わないWebのみを、一時的な別ポートで起動する。
+docker run --rm -d --name feeder-restore-check -p 127.0.0.1:18080:8080 \
+  -e FEEDER_BIND=0.0.0.0:8080 -e FEEDER_DB=/data/feeder.sqlite3 \
+  -e FEEDER_ALLOWED_HOSTS=127.0.0.1:18080,127.0.0.1:8080 \
+  -v "$restore_volume:/data" feeder:local
+curl --fail http://127.0.0.1:18080/healthz
+# http://127.0.0.1:18080 を開き、購読・記事・既読・スター・設定を確認する。
+docker stop feeder-restore-check
+# 確認完了後、名前を再確認してこの検証専用volumeだけを削除する。
+docker volume rm "$restore_volume"
+)
+```
+
+別ポート・コンテナ名が既に使われている場合は適切な空きを選んでください。起動中に検証用DBがスキーマ更新されても元volumeには影響しません。未確認のバックアップを実volumeに上書きしないでください。検証を中断した場合は、検証用コンテナとvolumeを確認してから片付けます。
+
+### 更新と切り戻し
+
+復元確認後、停止した元環境を更新します。
+
 ```sh
 docker compose build --pull
 docker compose up -d --wait
+docker compose ps
 ```
 
-再作成しても named volume は保持されます。既知の Feeder v1〜v9 DB は移行前に `/data` 内へバックアップを作り、未知のスキーマを拒否します。旧 FeedAstrolabe DB はそのままマウントしないでください。
+更新に失敗した場合は、Web／workerを停止し、更新後の `/data` も別にバックアップします。上記と同様に**新しい復旧専用volume**へ更新前バックアップを復元し、`feeder:before-update-YYYYMMDD` で別ポート起動して確認します。元のvolumeを削除・上書きせず、Composeのvolume指定とイメージを復旧用に切り替えたうえで起動します。旧版が新スキーマのDBを直接開かないようにしてください。更新後に作成された記事や状態は更新前バックアップに含まれないため、切り戻し前に保全・確認が必要です。
 
-DB 変更を含む更新前には Web と worker の両方を止め、一貫したデータ一式を退避・復元確認します。Feeder は今後の根拠ファイル等も含めて保全する方針です。例として、停止中の `/data` をホストへ取得できます。
-
-```sh
-mkdir -p backups
-docker compose stop
-docker compose run --rm --no-deps -T --entrypoint tar web -C /data -czf - . > backups/feeder-data.tar.gz
-# アーカイブの内容確認。実際の復元は別プロジェクトの新規volumeで試験する。
-tar -tzf backups/feeder-data.tar.gz
-docker compose start --wait
-```
-
-通常の `docker compose down` はコンテナを削除しても volume を残します。運用データへ `down --volumes` を実行しないでください。バックアップと切替の受入は [データ移行計画](data-cutover.md)に従います。上のtar手順は実環境復旧を完了させるものではなく、更新前に別volumeで復元と整合性を確認する必要があります。
+通常の `docker compose down` はvolumeを保持します。運用データに `down --volumes` を実行しないでください。復旧前には [データ移行計画](data-cutover.md) も確認してください。
 
 ## Linux での自動検証
 

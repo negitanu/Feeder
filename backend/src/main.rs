@@ -79,38 +79,88 @@ fn article(row: &rusqlite::Row<'_>) -> rusqlite::Result<Article> {
     })
 }
 
+fn inspect_existing_schema(check: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+    let objects: Vec<(String, String, Option<String>)> = check.prepare("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name")?.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_, _>>()?;
+    let app_id: i64 = check.pragma_query_value(None, "application_id", |r| r.get(0))?;
+    let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if !objects.is_empty()
+        && !(app_id == APP_ID
+            && ((version == 10 && extensions::recognized_v10(&objects))
+                || (version == 9 && extensions::recognized_v9(&objects))
+                || (version == 8 && collection::recognized_v8(&objects))
+                || (version == 7 && auth::recognized_v7(&objects))
+                || (version == 6 && settings::recognized_v6(&objects))
+                || (version == 5 && collection::recognized_v5(&objects))
+                || (version == 4 && reader::recognized_v4(&objects))
+                || (version == 3 && collection::recognized_v3(&objects))
+                || (version == 2 && collection::recognized_v2(&objects))
+                || (version == 1
+                    && objects.len() == 1
+                    && objects[0].0 == "table"
+                    && objects[0].1 == "articles"
+                    && objects[0].2.as_deref() == Some(SCHEMA))))
+    {
+        return Err("unsupported database schema; refusing to modify it".into());
+    }
+    if objects.is_empty() && (app_id != 0 || version != 0) {
+        return Err("unsupported database metadata; refusing to modify it".into());
+    }
+    Ok(())
+}
+
+fn validate_interrupted_copy(path: &FsPath) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| FsPath::new("."));
+    let dir = tempfile::Builder::new()
+        .prefix(".feeder-recovery-")
+        .tempdir_in(parent)?;
+    let copy = dir.path().join("database.sqlite3");
+    let mut journal_name = path.as_os_str().to_os_string();
+    journal_name.push("-journal");
+    let journal = std::path::PathBuf::from(journal_name);
+    if !journal.is_file() {
+        return Err("missing rollback journal; refusing recovery".into());
+    }
+    std::fs::copy(path, &copy)?;
+    std::fs::copy(journal, dir.path().join("database.sqlite3-journal"))?;
+    let check = Connection::open(&copy)?;
+    check.busy_timeout(std::time::Duration::from_secs(5))?;
+    inspect_existing_schema(&check)?;
+    let integrity: String = check.pragma_query_value(None, "integrity_check", |r| r.get(0))?;
+    if integrity != "ok" {
+        return Err("recovered database failed integrity check".into());
+    }
+    if check
+        .prepare("PRAGMA foreign_key_check")?
+        .query([])?
+        .next()?
+        .is_some()
+    {
+        return Err("recovered database failed foreign key check".into());
+    }
+    Ok(())
+}
+
 fn open_db(path: &FsPath, demo: bool) -> Result<Connection, Box<dyn std::error::Error>> {
-    // Inspect existing files read-only: even journal creation must not touch an unsupported database.
+    // Inspect unknown files read-only. A hot rollback journal requires a validated copy first.
     if path.exists() {
         let check = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         check.busy_timeout(std::time::Duration::from_secs(5))?;
-        let objects: Vec<(String, String, Option<String>)> = check.prepare("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name")?.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_, _>>()?;
-        let app_id: i64 = check.pragma_query_value(None, "application_id", |r| r.get(0))?;
-        let version: i64 = check.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        if !objects.is_empty()
-            && !(app_id == APP_ID
-                && ((version == 10 && extensions::recognized_v10(&objects))
-                    || (version == 9 && extensions::recognized_v9(&objects))
-                    || (version == 8 && collection::recognized_v8(&objects))
-                    || (version == 7 && auth::recognized_v7(&objects))
-                    || (version == 6 && settings::recognized_v6(&objects))
-                    || (version == 5 && collection::recognized_v5(&objects))
-                    || (version == 4 && reader::recognized_v4(&objects))
-                    || (version == 3 && collection::recognized_v3(&objects))
-                    || (version == 2 && collection::recognized_v2(&objects))
-                    || (version == 1
-                        && objects.len() == 1
-                        && objects[0].0 == "table"
-                        && objects[0].1 == "articles"
-                        && objects[0].2.as_deref() == Some(SCHEMA))))
-        {
-            return Err("unsupported database schema; refusing to modify it".into());
-        }
-        if objects.is_empty() && (app_id != 0 || version != 0) {
-            return Err("unsupported database metadata; refusing to modify it".into());
+        if let Err(error) = inspect_existing_schema(&check) {
+            let rollback_required = error.downcast_ref::<rusqlite::Error>().is_some_and(|e| matches!(e, rusqlite::Error::SqliteFailure(code, _) if code.extended_code == 776));
+            if !rollback_required {
+                return Err(error);
+            }
+            drop(check);
+            validate_interrupted_copy(path)?;
+            let recovered = Connection::open(path)?;
+            recovered.busy_timeout(std::time::Duration::from_secs(5))?;
+            inspect_existing_schema(&recovered)?;
         }
     }
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -391,6 +441,63 @@ mod tests {
         http::Request,
     };
     use tower::ServiceExt;
+
+    #[test]
+    fn interrupted_writer_child() {
+        let Some(path) = std::env::var_os("FEEDER_TEST_CRASH_DB") else {
+            return;
+        };
+        let db = Connection::open(path).unwrap();
+        db.execute_batch("PRAGMA cache_size=5; BEGIN IMMEDIATE; UPDATE articles SET title='interrupted',content=printf('%0*d',5000,id);").unwrap();
+        // Exit without dropping the transaction to simulate an interrupted process.
+        std::process::exit(0);
+    }
+
+    #[test]
+    fn interrupted_journal_is_recovered_only_after_schema_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        for valid in [true, false] {
+            let path = dir
+                .path()
+                .join(if valid { "known.db" } else { "foreign.db" });
+            if valid {
+                drop(open_db(&path, true).unwrap());
+            } else {
+                let db = Connection::open(&path).unwrap();
+                db.execute_batch("CREATE TABLE articles(id INTEGER PRIMARY KEY,title TEXT,content TEXT); WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<36) INSERT INTO articles SELECT x,'original',printf('%0*d',5000,x) FROM n;").unwrap();
+            }
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests::interrupted_writer_child", "--nocapture"])
+                .env("FEEDER_TEST_CRASH_DB", &path)
+                .status()
+                .unwrap();
+            assert!(status.success());
+            let journal = path.with_file_name(format!(
+                "{}-journal",
+                path.file_name().unwrap().to_string_lossy()
+            ));
+            assert!(journal.exists());
+            let before_db = std::fs::read(&path).unwrap();
+            let before_journal = std::fs::read(&journal).unwrap();
+            let readonly =
+                Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+            let error = inspect_existing_schema(&readonly).unwrap_err();
+            assert!(error.downcast_ref::<rusqlite::Error>().is_some_and(|e| matches!(e, rusqlite::Error::SqliteFailure(code, _) if code.extended_code == 776)));
+            drop(readonly);
+            if valid {
+                let db = open_db(&path, false).unwrap();
+                let title: String = db
+                    .query_row("SELECT title FROM articles WHERE id=1", [], |r| r.get(0))
+                    .unwrap();
+                assert_ne!(title, "interrupted");
+                assert!(!journal.exists());
+            } else {
+                assert!(open_db(&path, false).is_err());
+                assert_eq!(std::fs::read(&path).unwrap(), before_db);
+                assert_eq!(std::fs::read(&journal).unwrap(), before_journal);
+            }
+        }
+    }
 
     #[tokio::test]
     async fn hero_contract_and_private_target_preserve_state() {

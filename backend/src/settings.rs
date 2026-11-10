@@ -41,10 +41,137 @@ pub fn recognized_v6(objects: &[(String, String, Option<String>)]) -> bool {
     rows.collect::<Result<Vec<_>, _>>()
         .is_ok_and(|v| v == objects)
 }
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ReaderSettings {
     pub display_timezone: String,
     pub default_view: String,
+}
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct ImportCollection {
+    enabled: bool,
+    interval_seconds: i64,
+}
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct ImportState {
+    reader: ReaderSettings,
+    collection: ImportCollection,
+    rate_limit: i64,
+    folders: Vec<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportRequest {
+    expected: ImportState,
+    desired: ImportState,
+}
+
+fn import_state(db: &Connection) -> Result<ImportState, StatusCode> {
+    let collection = db
+        .query_row(
+            "SELECT enabled,interval_seconds FROM collection_settings WHERE id=1",
+            [],
+            |r| {
+                Ok(ImportCollection {
+                    enabled: r.get(0)?,
+                    interval_seconds: r.get(1)?,
+                })
+            },
+        )
+        .map_err(collection::err)?;
+    let rate_limit = db
+        .query_row(
+            "SELECT rate_limit FROM api_rate_settings WHERE id=1",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(collection::err)?;
+    let folders = db
+        .prepare("SELECT name FROM folders ORDER BY name COLLATE BINARY")
+        .map_err(collection::err)?
+        .query_map([], |r| r.get(0))
+        .map_err(collection::err)?
+        .collect::<Result<Vec<String>, _>>()
+        .map_err(collection::err)?;
+    Ok(ImportState {
+        reader: read(db)?,
+        collection,
+        rate_limit,
+        folders,
+    })
+}
+async fn get_import_state(State(db): State<Db>) -> Result<Json<ImportState>, StatusCode> {
+    let db = db.lock().map_err(collection::err)?;
+    Ok(Json(import_state(&db)?))
+}
+async fn apply_import(
+    State(db): State<Db>,
+    headers: HeaderMap,
+    Json(input): Json<ImportRequest>,
+) -> Result<Json<ImportState>, StatusCode> {
+    if !origin_allowed(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let desired = &input.desired;
+    if !matches!(
+        desired.reader.display_timezone.as_str(),
+        "UTC" | "Asia/Tokyo"
+    ) || !matches!(
+        desired.reader.default_view.as_str(),
+        "all" | "unread" | "starred"
+    ) || !(60..=86400).contains(&desired.collection.interval_seconds)
+        || !(1..=1000).contains(&desired.rate_limit)
+        || desired.folders.len() > 1000
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let mut names = HashSet::new();
+    for name in &desired.folders {
+        if collection::clean_name(name).ok() != Some(name.as_str())
+            || sensitive(name)
+            || unsafe_embedded_url(name)
+            || !names.insert(name)
+        {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    let mut db = db.lock().map_err(collection::err)?;
+    let tx = db
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(collection::err)?;
+    if import_state(&tx)? != input.expected {
+        return Err(StatusCode::CONFLICT);
+    }
+    tx.execute(
+        "UPDATE reader_settings SET display_timezone=?1,default_view=?2 WHERE id=1",
+        params![desired.reader.display_timezone, desired.reader.default_view],
+    )
+    .map_err(collection::err)?;
+    tx.execute(
+        "UPDATE collection_settings SET enabled=?1,interval_seconds=?2 WHERE id=1",
+        params![
+            desired.collection.enabled,
+            desired.collection.interval_seconds
+        ],
+    )
+    .map_err(collection::err)?;
+    tx.execute(
+        "UPDATE api_rate_settings SET rate_limit=?1 WHERE id=1",
+        [desired.rate_limit],
+    )
+    .map_err(collection::err)?;
+    for name in &desired.folders {
+        tx.execute(
+            "INSERT INTO folders(name) VALUES (?1) ON CONFLICT(name) DO NOTHING",
+            [name],
+        )
+        .map_err(collection::err)?;
+    }
+    let result = import_state(&tx)?;
+    tx.commit().map_err(collection::err)?;
+    Ok(Json(result))
 }
 pub fn read(db: &Connection) -> Result<ReaderSettings, StatusCode> {
     db.query_row(
@@ -254,6 +381,10 @@ pub fn routes() -> Router<Db> {
             get(get_settings).patch(patch_settings),
         )
         .route("/api/configuration/export", post(export))
+        .route(
+            "/api/configuration/import",
+            get(get_import_state).post(apply_import),
+        )
 }
 
 #[cfg(test)]
@@ -264,6 +395,100 @@ mod tests {
         http::Request,
     };
     use tower::ServiceExt;
+    #[tokio::test]
+    async fn import_is_atomic_additive_and_detects_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(
+            open_db(&dir.path().join("import.db"), false).unwrap(),
+        ));
+        {
+            let c = db.lock().unwrap();
+            c.execute_batch("INSERT INTO folders(id,name) VALUES(5,'Existing'); INSERT INTO feeds(id,url,title,folder_id) VALUES(7,'https://example.test/feed','Feed',5); INSERT INTO articles(id,feed_id,title,content,url,published,is_read,is_starred) VALUES(9,7,'Article','','https://example.test/a','',1,1);").unwrap();
+        }
+        let expected = import_state(&db.lock().unwrap()).unwrap();
+        let mut desired = expected.clone();
+        desired.reader.default_view = "unread".into();
+        desired.collection.enabled = true;
+        desired.collection.interval_seconds = 600;
+        desired.rate_limit = 30;
+        desired.folders = vec!["Existing".into(), "Added".into()];
+        let mut headers = HeaderMap::new();
+        headers.insert("origin", "http://127.0.0.1:8080".parse().unwrap());
+        headers.insert("host", "127.0.0.1:8080".parse().unwrap());
+        db.lock()
+            .unwrap()
+            .execute("UPDATE collection_settings SET interval_seconds=1200", [])
+            .unwrap();
+        assert!(matches!(
+            apply_import(
+                State(db.clone()),
+                headers.clone(),
+                Json(ImportRequest {
+                    expected: expected.clone(),
+                    desired: desired.clone()
+                })
+            )
+            .await,
+            Err(StatusCode::CONFLICT)
+        ));
+        {
+            let c = db.lock().unwrap();
+            assert_eq!(read(&c).unwrap().default_view, "all");
+            assert_eq!(
+                c.query_row("SELECT count(*) FROM folders WHERE name='Added'", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        let current = import_state(&db.lock().unwrap()).unwrap();
+        let mut unsafe_desired = desired.clone();
+        unsafe_desired.folders.push("secret-key".into());
+        assert!(matches!(
+            apply_import(
+                State(db.clone()),
+                headers.clone(),
+                Json(ImportRequest {
+                    expected: current.clone(),
+                    desired: unsafe_desired
+                })
+            )
+            .await,
+            Err(StatusCode::BAD_REQUEST)
+        ));
+        let result = apply_import(
+            State(db.clone()),
+            headers,
+            Json(ImportRequest {
+                expected: current,
+                desired,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(result.reader.default_view, "unread");
+        assert_eq!(result.collection.interval_seconds, 600);
+        assert_eq!(result.rate_limit, 30);
+        let c = db.lock().unwrap();
+        assert_eq!(
+            c.query_row(
+                "SELECT is_read+is_starred FROM articles WHERE id=9",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            c.query_row("SELECT folder_id FROM feeds WHERE id=7", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            5
+        );
+        let order: Vec<String> = c.prepare("SELECT f.name FROM folders f JOIN folder_order o ON o.folder_id=f.id ORDER BY o.position").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(order, vec!["Existing", "Added"]);
+    }
     fn request(method: &str, uri: &str, body: &str, origin: &str) -> Request<Body> {
         Request::builder()
             .method(method)
