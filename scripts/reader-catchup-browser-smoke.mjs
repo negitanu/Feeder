@@ -108,7 +108,7 @@ assert c.execute('SELECT count(*) FROM articles a LEFT JOIN article_story_index 
 `, db], { encoding: 'utf8' })
   assert.equal(seedCheck.status, 0, `Synthetic fixture integrity failed: ${seedCheck.stderr}`)
 
-  browser = await chromium.launch({ headless: true })
+  browser = await chromium.launch({ headless: true, executablePath: process.env.FEEDER_CHROMIUM_PATH })
   const origin = base.origin
   const errors = []
   const failedRequests = []
@@ -310,7 +310,7 @@ c.commit()
   assert((await queue().count()) <= 20)
   const periodSelect = page.locator('.catchup-controls').getByLabel('期間')
   await periodSelect.selectOption('168')
-  await page.waitForFunction(() => document.querySelector('.catchup-coverage')?.textContent?.includes('最大20件'))
+  await page.locator('.catchup-coverage').filter({ hasText: '最大20件' }).waitFor()
   const uiTarget = page.locator('.catchup-open').first()
   const uiTargetId = Number(await uiTarget.getAttribute('data-article-id'))
   const visitsBeforeOpen = visitRequests.length
