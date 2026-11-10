@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(new URL('../frontend/package.json',import.meta.url));
 const {chromium}=require('@playwright/test');
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,...(process.env.FEEDER_CHROMIUM_PATH?{executablePath:process.env.FEEDER_CHROMIUM_PATH}:{})});
 try{
  const page=await browser.newPage({viewport:{width:1280,height:800}});
  const origin=process.env.FEEDER_URL||'http://127.0.0.1:8080';
@@ -29,6 +29,12 @@ try{
  await page.waitForFunction(()=>document.querySelectorAll('.article-card.read').length>0);
  const all=await list();assert.equal(all.items.filter(a=>a.is_read).length,25);assert.equal(all.items.filter(a=>!a.is_read).length,11);
  const selected=page.getByRole('checkbox',{name:/^記事を選択:/});await selected.nth(0).check();await selected.nth(1).check();
+ const expectedLinks=await page.locator('.article-card').evaluateAll(cards=>cards.slice(0,2).map(card=>card.querySelector('.article-open strong')?.textContent));
+ const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'リンクを書き出す'}).click();
+ const download=await downloadPromise;assert.equal(download.suggestedFilename(),'feeder-links.txt');
+ const {readFile}=await import('node:fs/promises');const exported=await readFile(await download.path(),'utf8');
+ for(const title of expectedLinks) assert.ok(exported.includes(title));
+ assert.equal(await page.locator('input[aria-label^="記事を選択:"]:checked').count(),2);
  await page.getByRole('combobox',{name:'一括操作',exact:true}).selectOption('star');await page.getByRole('button',{name:'実行',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('.article-card .is-starred').length===2);
  const starIds=(await list('&starred=true')).items.map(a=>a.id);assert.equal(starIds.length,2);
@@ -57,10 +63,13 @@ try{
  // Global unread clears prior search/advanced scope and counts the entire library.
  assert.equal((await page.request.post(origin+'/api/articles/bulk-state',{data:{ids,read:false,filters:{}}})).status(),200);
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await page.getByRole('button',{name:'メニューを開く',exact:true}).click();
  const unreadEntry=page.locator('.filters button').filter({hasText:'未読'});await unreadEntry.locator('.count').filter({hasText:'36'}).waitFor();
+ await page.locator('.mobile-sidebar-heading button').click();
  await page.getByRole('textbox',{name:'記事を検索'}).fill('該当しない検索語');await page.getByRole('textbox',{name:'記事を検索'}).press('Enter');await page.waitForFunction(()=>document.querySelector('.result-count')?.textContent?.includes('0 件'));
+ await page.getByRole('button',{name:'メニューを開く',exact:true}).click();
  await unreadEntry.click();await page.waitForFunction(()=>document.querySelector('.result-count')?.textContent?.includes('36 件'));assert.equal(await page.getByRole('textbox',{name:'記事を検索'}).inputValue(),'');assert.equal(await unreadEntry.getAttribute('aria-current'),'page');
- await page.locator('.article-open').first().click();await unreadEntry.locator('.count').filter({hasText:'35'}).waitFor();await page.getByRole('button',{name:/一覧に戻る/}).click();
+ await page.locator('.article-open').first().click();await page.waitForFunction(()=>document.querySelector('.unread-count')?.textContent==='35');await page.getByRole('button',{name:/一覧に戻る/}).click();
  await page.getByRole('textbox',{name:'記事を検索'}).fill('サンプル記事 1');await page.getByRole('textbox',{name:'記事を検索'}).press('Enter');await page.waitForFunction(()=>document.querySelector('.list-heading p')?.textContent?.includes('サンプル記事 1'));assert.equal(await unreadEntry.getAttribute('aria-current'),null);assert.equal(await unreadEntry.locator('.count').textContent(),'35');
  assert.deepEqual(errors,[]);
  console.log('Productivity browser passed: unloaded scoped all-read, unchanged history, detailed exclusions, selected stars, history persistence and mobile.');

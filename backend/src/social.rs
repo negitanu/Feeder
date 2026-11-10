@@ -9,7 +9,7 @@ pub fn migrate(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
 
 #[derive(Clone, Serialize)]
 pub(super) struct Source {
-    feed_id: i64,
+    pub(super) feed_id: i64,
     provider: String,
     actor: String,
     server: String,
@@ -19,7 +19,7 @@ pub(super) struct Source {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Input {
+pub(super) struct Input {
     provider: String,
     actor: String,
     server: Option<String>,
@@ -86,6 +86,12 @@ fn field<'a>(v: &'a serde_json::Value, key: &str) -> Result<&'a str, StatusCode>
     v.get(key)
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty() && s.len() <= 2048)
+        .ok_or(StatusCode::BAD_GATEWAY)
+}
+fn post_content<'a>(v: &'a serde_json::Value, key: &str) -> Result<&'a str, StatusCode> {
+    v.get(key)
+        .and_then(|value| value.as_str())
+        .filter(|value| value.len() <= 256 * 1024)
         .ok_or(StatusCode::BAD_GATEWAY)
 }
 fn endpoint(server: &str, path: &str, params: &[(&str, &str)]) -> Result<Url, StatusCode> {
@@ -179,7 +185,7 @@ fn parsed(s: &Source, v: &serde_json::Value) -> Result<feed_rs::model::Feed, Sta
             (
                 field(item, "id")?.to_owned(),
                 field(item, "url")?.to_owned(),
-                field(item, "content")?.to_owned(),
+                post_content(item, "content")?.to_owned(),
                 field(item, "created_at")?.to_owned(),
                 match item.get("edited_at") {
                     None | Some(serde_json::Value::Null) => field(item, "created_at")?,
@@ -209,7 +215,7 @@ fn parsed(s: &Source, v: &serde_json::Value) -> Result<feed_rs::model::Feed, Sta
             (
                 uri.to_string(),
                 format!("https://bsky.app/profile/{}/post/{}", s.remote_id, rkey),
-                field(rec, "text")?.to_string(),
+                post_content(rec, "text")?.to_string(),
                 field(rec, "createdAt")?.to_string(),
                 field(rec, "createdAt")?.to_string(),
             )
@@ -414,6 +420,9 @@ async fn create(
     if !origin_allowed(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
+    Ok(Json(create_source(db, input).await?))
+}
+pub(super) async fn create_source(db: Db, input: Input) -> Result<Source, StatusCode> {
     let mut s = resolve(&input).await?;
     let url = if s.provider == "mastodon" {
         format!("{}/@{}", s.server, s.actor)
@@ -434,7 +443,7 @@ async fn create(
     )
     .map_err(collection::db_write_error)?;
     tx.commit().map_err(collection::err)?;
-    Ok(Json(s))
+    Ok(s)
 }
 async fn delete(
     State(db): State<Db>,
@@ -519,6 +528,27 @@ mod tests {
             )
             .contains("fish & chips")
         );
+    }
+    #[test]
+    fn social_content_accepts_long_and_empty_posts_but_is_bounded() {
+        let long = "長".repeat(1000);
+        for content in [long.as_str(), ""] {
+            let mastodon = serde_json::json!([{ "id":"1", "account":{"id":"123"}, "visibility":"public", "reblog":null,"url":"https://example.com/@alice/1", "content":content,"created_at":"2025-01-01T00:00:00Z" }]);
+            let feed = parsed(&fixture("mastodon"), &mastodon).unwrap();
+            assert_eq!(feed.entries.len(), 1);
+            let bluesky = serde_json::json!({"feed":[{"post":{"uri":"at://did:plc:alice/app.bsky.feed.post/abc", "author":{"did":"did:plc:alice"},"record":{"text":content,"createdAt":"2025-01-01T00:00:00Z"}}}]});
+            assert_eq!(
+                parsed(&fixture("bluesky"), &bluesky).unwrap().entries.len(),
+                1
+            );
+        }
+        for content in [
+            serde_json::Value::Null,
+            serde_json::json!("x".repeat(256 * 1024 + 1)),
+        ] {
+            let invalid = serde_json::json!([{ "id":"1", "account":{"id":"123"}, "visibility":"public", "reblog":null,"url":"https://example.com/@alice/1", "content":content,"created_at":"2025-01-01T00:00:00Z" }]);
+            assert!(parsed(&fixture("mastodon"), &invalid).is_err());
+        }
     }
     #[test]
     fn bluesky_excludes_reposts_and_other_authors() {

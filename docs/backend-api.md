@@ -12,7 +12,7 @@ The service binds `127.0.0.1:8080` by default. Configure it with `FEEDER_BIND` a
 - `PATCH /api/feeds/{id}`: `{title?, folder_id?, paused?}` updates a feed; pass null for `folder_id` to move it to unfiled. Returns the feed.
 - `POST /api/feeds/{id}/refresh` conditionally fetches a feed and returns it; paused feeds return 409. A failed refresh retains articles and records an error. `DELETE /api/feeds/{id}` deletes the feed and its articles and returns 204.
 
-Feed collection rejects non-public destinations, credentials and unsafe redirects, validates DNS on every hop and pins validated addresses, bypasses proxy settings, and enforces a total 10-second timeout, five redirects, 2 MiB response and 500 entries. Article bodies are converted to plain text. Discovery and previews use the same fetch protections.
+Feed collection rejects non-public destinations, credentials and unsafe redirects, validates DNS on every hop and pins validated addresses, bypasses proxy settings, and enforces a total 10-second timeout, five redirects, 8 MiB RSS response and 10,000 entries (discovery and other shared fetches retain a 2 MiB response limit). Article bodies are converted to plain text. Discovery and previews use the same fetch protections.
 
 Recognized version 1 databases are copied using SQLite's backup API to a sibling with extension `.v1-backup.sqlite3` before migration; an existing backup is not overwritten. Unknown schemas are refused. `reqwest` 0.12 and `html2text` 0.16 use the compatible APIs chosen for this implementation; the lockfile records exact resolved versions.
 
@@ -27,7 +27,7 @@ Run `feeder worker` separately with the same `FEEDER_DB` to schedule due, unpaus
 Recognized version 2 databases are backed up to `.v2-backup.sqlite3` before migration to version 3. Existing backups are not overwritten; unknown schemas are refused.
 
 - `POST /api/opml/preview`: `{xml}` returns `{items,valid,new,existing,duplicates,invalid}`. Items contain `url`, `title`, `folder`, and `status`; invalid entries are counted and shown with status `invalid`.
-- `POST /api/opml/import`: `{xml}` reparses and validates the document and returns `{added,existing,duplicates,invalid}`. Newly imported feeds are paused and no outbound fetch occurs. Nested folders are flattened into slash-separated names.
+- `POST /api/opml/import`: `{xml}` reparses and validates the document and returns `{added,existing,duplicates,invalid}`. Newly imported feeds are active and no outbound fetch occurs during import. Nested folders are flattened into slash-separated names.
 - `GET /api/opml/export` returns an escaped OPML attachment. The `feeder:paused` outline attribute preserves pause status in the export; imports deliberately pause all newly added feeds.
 
 OPML input is limited to 1 MiB, 1,000 outlines, and 16 levels of XML nesting. DTDs and entity declarations are rejected. Neither OPML operation imports article content or credentials.

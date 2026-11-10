@@ -1,0 +1,9 @@
+## ADDED Requirements
+### Requirement: 情報源種別の正確な公開
+公開API SHALL RSS、Mastodon、Blueskyのフィードと記事を正しいsource_typeで返す。
+#### Scenario: RSSだけを絞る
+- **WHEN** 記事一覧にsource_type=rssを指定する
+- **THEN** SNS投稿を結果に含めない。
+#### Scenario: SNSを絞る
+- **WHEN** source_type=mastodonまたはblueskyを指定する
+- **THEN** 指定サービスの投稿のみを返す。

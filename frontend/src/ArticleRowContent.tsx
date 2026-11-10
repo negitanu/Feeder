@@ -45,12 +45,13 @@ export function ArticleRowContent({ article, timezone }: ArticleRowContentProps)
   const source = sourceLabel(article)
   const excerpt = article.content.slice(0, 180) + (article.content.length > 180 ? '…' : '')
   const timestamp = formatArticlePublished(article.published, timezone)
+  const compactDate = timestamp === '公開日不明' ? timestamp : timestamp.slice(5, 10)
 
   return (
     <span className="article-row-content card-copy">
       <span className="source" title={source}>{source}</span>
       <strong title={article.title}>{article.title}</strong>
-      <time className="card-meta" dateTime={article.published || undefined}>{timestamp}</time>
+      <time className="card-meta" dateTime={article.published || undefined} aria-label={timestamp} title={timestamp}><span className="article-date-full" aria-hidden="true">{timestamp}</span><span className="article-date-compact" aria-hidden="true">{compactDate}</span></time>
       <span className="excerpt">{excerpt}</span>
     </span>
   )

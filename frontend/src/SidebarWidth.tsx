@@ -17,6 +17,14 @@ export default function SidebarWidth({ children, onWidthChange }: { children: Re
   }, [])
   useEffect(() => { try { localStorage.setItem('feeder-sidebar-width', String(width)) } catch { /* Width remains usable in this session. */ } }, [width])
   useEffect(() => { onWidthChange(width) }, [width,onWidthChange])
+  useEffect(() => {
+    function imported(event: Event) {
+      const value = (event as CustomEvent<unknown>).detail
+      if (typeof value === 'number' && Number.isInteger(value) && value >= MIN && value <= MAX) setWidth(value)
+    }
+    window.addEventListener('feeder-import-sidebar-width', imported)
+    return () => window.removeEventListener('feeder-import-sidebar-width', imported)
+  }, [])
   const visible = Math.min(width,available)
   function change(value: number) { setWidth(Math.max(MIN,Math.min(available,value))) }
   function key(e: KeyboardEvent<HTMLDivElement>) {

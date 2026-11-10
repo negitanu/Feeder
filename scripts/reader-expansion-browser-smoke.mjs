@@ -42,7 +42,7 @@ for i in range(1,15):
 c.commit()
 `, db], { encoding: 'utf8' })
   assert.equal(seed.status, 0, `Fixture seed failed: ${seed.stderr}`)
-  browser = await chromium.launch({ headless: true })
+  browser = await chromium.launch({ headless: true, ...(process.env.FEEDER_CHROMIUM_PATH ? { executablePath: process.env.FEEDER_CHROMIUM_PATH } : {}) })
   const origin = base.origin
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await ctx.newPage()

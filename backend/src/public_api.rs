@@ -45,7 +45,7 @@ struct FeedDto {
     title: String,
     folder: Option<String>,
     enabled: bool,
-    source_type: &'static str,
+    source_type: String,
     poll_interval: Option<i64>,
     last_checked: Option<String>,
     error: Option<String>,
@@ -57,13 +57,13 @@ fn feed_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<FeedDto> {
         title: r.get(2)?,
         folder: r.get(3)?,
         enabled: !r.get::<_, bool>(4)?,
-        source_type: "rss",
+        source_type: r.get(8)?,
         poll_interval: r.get(7)?,
         last_checked: r.get(5)?,
         error: r.get(6)?,
     })
 }
-const FEED_SELECT: &str = "SELECT f.id,f.url,f.title,d.name,f.paused,f.last_checked,f.last_error,(SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id) FROM feeds f LEFT JOIN folders d ON d.id=f.folder_id";
+const FEED_SELECT: &str = "SELECT f.id,f.url,f.title,d.name,f.paused,f.last_checked,f.last_error,(SELECT interval_seconds FROM feed_poll_intervals WHERE feed_id=f.id)  ,COALESCE(s.provider,'rss') FROM feeds f LEFT JOIN folders d ON d.id=f.folder_id LEFT JOIN social_sources s ON s.feed_id=f.id";
 fn get_feed(db: &Connection, id: i64) -> ResultApi<FeedDto> {
     db.query_row(&format!("{FEED_SELECT} WHERE f.id=?"), [id], feed_row)
         .optional()
@@ -94,6 +94,24 @@ async fn feed_detail(
 ) -> ResultApi<Json<serde_json::Value>> {
     let db = db.lock().map_err(internal)?;
     Ok(envelope(get_feed(&db, id)?))
+}
+async fn create_social(
+    State(db): State<Db>,
+    input: Result<Json<super::social::Input>, JsonRejection>,
+) -> ResultApi<(
+    StatusCode,
+    [(header::HeaderName, String); 1],
+    Json<serde_json::Value>,
+)> {
+    let source = super::social::create_source(db, body(input)?).await?;
+    Ok((
+        StatusCode::CREATED,
+        [(
+            header::LOCATION,
+            format!("/api/v1/feeds/{}", source.feed_id),
+        )],
+        envelope(source),
+    ))
 }
 fn folder_name(s: &str) -> ResultApi<&str> {
     let s = s.trim();
@@ -244,7 +262,7 @@ struct ArticleDto {
     is_read: bool,
     is_starred: bool,
     feed_title: Option<String>,
-    source_type: &'static str,
+    source_type: String,
 }
 fn article_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleDto> {
     Ok(ArticleDto {
@@ -258,10 +276,10 @@ fn article_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleDto> {
         is_read: r.get(7)?,
         is_starred: r.get(8)?,
         feed_title: r.get(9)?,
-        source_type: "rss",
+        source_type: r.get(10)?,
     })
 }
-const ARTICLE_SELECT: &str = "SELECT a.id,a.feed_id,a.external_id,a.title,a.url,a.content,a.published,a.is_read,a.is_starred,f.title FROM articles a LEFT JOIN feeds f ON f.id=a.feed_id";
+const ARTICLE_SELECT: &str = "SELECT a.id,a.feed_id,a.external_id,a.title,a.url,a.content,a.published,a.is_read,a.is_starred,f.title,COALESCE(s.provider,'rss') FROM articles a LEFT JOIN feeds f ON f.id=a.feed_id LEFT JOIN social_sources s ON s.feed_id=a.feed_id";
 fn get_article(db: &Connection, id: i64) -> ResultApi<ArticleDto> {
     db.query_row(&format!("{ARTICLE_SELECT} WHERE a.id=?"), [id], article_row)
         .optional()
@@ -336,9 +354,11 @@ async fn articles(
                 values.push(v.to_string().into());
             }
             "source_type" => {
-                if v != "rss" {
+                if !matches!(v.as_ref(), "rss" | "mastodon" | "bluesky") {
                     return Err(bad());
                 }
+                clauses.push("COALESCE(s.provider,'rss')=?");
+                values.push(v.to_string().into());
             }
             _ => return Err(bad()),
         }
@@ -418,6 +438,7 @@ async fn article_edit(
 }
 pub(super) fn routes() -> Router<Db> {
     Router::new()
+        .route("/api/v1/social/sources", axum::routing::post(create_social))
         .route("/api/v1/feeds", get(feeds).post(create))
         .route(
             "/api/v1/feeds/{id}",
@@ -439,6 +460,53 @@ mod tests {
         http::Request,
     };
     use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn public_api_reports_and_filters_social_source_types() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(
+            open_db(&dir.path().join("test.db"), false).unwrap(),
+        ));
+        {
+            let conn = db.lock().unwrap();
+            conn.execute_batch("INSERT INTO feeds(id,url,title) VALUES (1,'https://example.invalid/feed','RSS'),(2,'https://example.invalid/mastodon','Mastodon'),(3,'https://example.invalid/bluesky','Bluesky'); INSERT INTO social_sources(feed_id,provider,actor,server,remote_id) VALUES (2,'mastodon','test','https://example.invalid','1'),(3,'bluesky','test','https://example.invalid','2'); INSERT INTO articles(id,feed_id,external_id,title,content,url,published) VALUES (1,1,'one','RSS','','https://example.invalid/1',''),(2,2,'two','Mastodon','','https://example.invalid/2',''),(3,3,'three','Bluesky','','https://example.invalid/3','');").unwrap();
+        }
+        let router = routes().with_state(db);
+        for (uri, expected) in [
+            ("/api/v1/articles?source_type=rss", "rss"),
+            ("/api/v1/articles?source_type=mastodon", "mastodon"),
+            ("/api/v1/articles?source_type=bluesky", "bluesky"),
+        ] {
+            let response = router
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let value: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            let data = value["data"].as_array().unwrap();
+            assert_eq!(data.len(), 1);
+            assert_eq!(data[0]["source_type"], expected);
+        }
+        for (uri, expected) in [
+            ("/api/v1/feeds/2", "mastodon"),
+            ("/api/v1/feeds/3", "bluesky"),
+            ("/api/v1/articles/2", "mastodon"),
+            ("/api/v1/articles/3", "bluesky"),
+        ] {
+            let response = router
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            let value: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            assert_eq!(value["data"]["source_type"], expected);
+        }
+    }
 
     #[tokio::test]
     async fn pagination_validation_and_state_do_not_visit() {
