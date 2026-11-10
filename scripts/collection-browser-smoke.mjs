@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require=createRequire(new URL('../frontend/package.json',import.meta.url));
 const {chromium}=require('@playwright/test');
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,...(process.env.FEEDER_CHROMIUM_PATH?{executablePath:process.env.FEEDER_CHROMIUM_PATH}:{})});
 try {
  const page=await browser.newPage({viewport:{width:1280,height:800}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -43,6 +43,7 @@ try {
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.getByRole('button',{name:'読む',exact:true}).click();
+ await page.getByRole('button',{name:'メニューを開く',exact:true}).click();
  await page.getByRole('button',{name:'検証購読の操作',exact:true}).click();
  page.once('dialog',dialog=>dialog.accept());
  await page.getByRole('button',{name:'削除',exact:true}).click();
