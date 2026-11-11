@@ -76,3 +76,17 @@
 .reader-header .list-heading { display:flex; flex:none; align-items:baseline; gap:12px; margin:0; }
 .reader-header .reader-actions { flex:1; margin:0; min-width:0; }
 @media (max-width:760px) { .reader-header { flex-wrap:wrap; gap:8px; } .reader-header .reader-actions { flex:1 1 100%; } }
+
+/* The document remains the reading scroll area; the library scrolls independently. */
+@media (min-width: 761px) {
+  .workspace > .sidebar {
+    position: sticky;
+    top: 72px;
+    align-self: start;
+    height: calc(100vh - 72px);
+    height: calc(100dvh - 72px);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+}

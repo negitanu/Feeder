@@ -1,0 +1,2 @@
+- [x] Add independent desktop sidebar scrolling and preserve the mobile drawer.
+- [x] Verify desktop and mobile scrolling on synthetic app data and build.
