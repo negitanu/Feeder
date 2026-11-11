@@ -2,8 +2,6 @@
 use super::*;
 
 pub fn migrate(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
-    digest::migrate(tx)?;
-    duplicates::migrate(tx)?;
     smart_folders::migrate(tx)?;
     social::migrate(tx)?;
     read_later::migrate(tx)?;

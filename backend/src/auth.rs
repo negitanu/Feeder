@@ -1038,17 +1038,12 @@ mod tests {
             .unwrap()
             .to_owned();
         let reads = [
-            "/api/smart-folders",
+            "/api/library/unread",
             "/api/mute-rules",
-            "/api/duplicates",
-            "/api/duplicates/members?article_id=1&before_id=2",
-            "/api/digest",
             "/api/read-later",
             "/api/read-later/settings",
             "/api/social/sources",
             "/api/collection/health",
-            "/api/catchup",
-            "/api/catchup/interests",
             "/api/configuration/import",
             "/api/articles/1/revisions",
             "/api/articles/1/related",
@@ -1101,11 +1096,6 @@ mod tests {
             ),
             (
                 "POST",
-                "/api/smart-folders",
-                r#"{"name":"Synthetic","snapshot":{"filter":"all","query":"","source":null,"applied":{"order":"new","scope":"both"}}}"#,
-            ),
-            (
-                "POST",
                 "/api/mute-rules",
                 r#"{"name":"Synthetic","term":"test","field":"title","feed_id":null,"enabled":true}"#,
             ),
@@ -1121,21 +1111,6 @@ mod tests {
                 r#"{"provider":"invalid","actor":"synthetic"}"#,
             ),
             ("DELETE", "/api/social/sources/999", ""),
-            (
-                "PUT",
-                "/api/catchup/interests",
-                r#"{"revision":1,"terms":[],"priority_feed_ids":[]}"#,
-            ),
-            (
-                "PUT",
-                "/api/catchup/acknowledgements",
-                r#"{"article_id":1,"revision":1,"fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","action":"confirmed"}"#,
-            ),
-            (
-                "DELETE",
-                "/api/catchup/acknowledgements",
-                r#"{"article_id":1,"revision":1,"fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#,
-            ),
             (
                 "PUT",
                 "/api/articles/1/related-exclusion",

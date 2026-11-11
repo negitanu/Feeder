@@ -1,0 +1,4 @@
+- [x] Remove catch-up UI and route while retaining data compatibility.
+- [x] Consolidate list header and fix settings links.
+- [x] Automate discovery and support an optional feed name atomically.
+- [x] Verify build and relevant tests.

@@ -211,6 +211,31 @@ async fn library(State(db): State<Db>) -> Result<Json<Library>, StatusCode> {
     tx.commit().map_err(err)?;
     Ok(Json(Library { folders, feeds }))
 }
+#[derive(Serialize)]
+struct UnreadCounts {
+    total: i64,
+    folders: Vec<FolderUnread>,
+}
+#[derive(Serialize)]
+struct FolderUnread {
+    id: i64,
+    count: i64,
+}
+async fn unread_counts(State(db): State<Db>) -> Result<Json<UnreadCounts>, StatusCode> {
+    let db = db.lock().map_err(err)?;
+    let predicate = format!("articles.is_read=0 AND NOT ({})", mute_rules::HIDDEN_SQL);
+    let total = db
+        .query_row(
+            &format!("SELECT count(*) FROM articles WHERE {predicate}"),
+            [],
+            |r| r.get(0),
+        )
+        .map_err(err)?;
+    let folders = db.prepare(&format!("SELECT folders.id, count(articles.id) FROM folders LEFT JOIN feeds ON feeds.folder_id=folders.id LEFT JOIN articles ON articles.feed_id=feeds.id AND {predicate} GROUP BY folders.id")).map_err(err)?
+        .query_map([], |r| Ok(FolderUnread { id: r.get(0)?, count: r.get(1)? })).map_err(err)?
+        .collect::<Result<Vec<_>, _>>().map_err(err)?;
+    Ok(Json(UnreadCounts { total, folders }))
+}
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct Snapshot {
@@ -1029,21 +1054,34 @@ pub(super) async fn add_feed(
     input_url: &str,
     folder_id: Option<i64>,
 ) -> Result<Feed, StatusCode> {
-    add_feed_impl(db, input_url, folder_id, None).await
+    add_feed_impl(db, input_url, folder_id, None, None).await
 }
 pub(super) async fn add_feed_in_folder(
     db: Db,
     input_url: &str,
     folder: &str,
 ) -> Result<Feed, StatusCode> {
-    add_feed_impl(db, input_url, None, Some(folder)).await
+    add_feed_impl(db, input_url, None, Some(folder), None).await
+}
+pub(super) async fn add_named_feed(
+    db: Db,
+    input_url: &str,
+    folder_id: Option<i64>,
+    title: Option<&str>,
+) -> Result<Feed, StatusCode> {
+    add_feed_impl(db, input_url, folder_id, None, title).await
 }
 async fn add_feed_impl(
     db: Db,
     input_url: &str,
     folder_id: Option<i64>,
     folder_name: Option<&str>,
+    custom_title: Option<&str>,
 ) -> Result<Feed, StatusCode> {
+    let custom_title = custom_title
+        .filter(|s| !s.trim().is_empty())
+        .map(clean_name)
+        .transpose()?;
     let url = normalized_url(input_url)?.to_string();
     {
         let db = db.lock().map_err(err)?;
@@ -1067,6 +1105,7 @@ async fn add_feed_impl(
         .map(|t| plain(&t.content))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| url.clone());
+    let title = custom_title.unwrap_or(&title);
     let mut db = db.lock().map_err(err)?;
     let tx = db.transaction().map_err(err)?;
     folder_exists(&tx, folder_id)?;
@@ -1432,6 +1471,7 @@ fn apply_refresh_with_checkpoint(
 pub fn routes() -> Router<Db> {
     Router::new()
         .route("/api/library", get(library))
+        .route("/api/library/unread", get(unread_counts))
         .route("/api/library/order", post(order_library))
         .route(
             "/api/collection/settings",
@@ -1520,6 +1560,33 @@ mod tests {
         assert_eq!(
             parse_feed(make_feed(10_001).as_bytes(), &url).unwrap_err(),
             StatusCode::PAYLOAD_TOO_LARGE
+        );
+    }
+    #[tokio::test]
+    async fn unread_counts_follow_membership_and_mute_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(Mutex::new(open_db(&dir.path().join("db"), false).unwrap()));
+        db.lock().unwrap().execute_batch("INSERT INTO folders(id,name) VALUES(1,'One'),(2,'Empty'); INSERT INTO feeds(id,url,title,folder_id) VALUES(1,'https://a','A',1),(2,'https://b','B',NULL); INSERT INTO articles(id,title,content,url,published,is_read,feed_id) VALUES(1,'visible','','','',0,1),(2,'hidden','','','',0,1),(3,'read','','','',1,1),(4,'unfiled','','','',0,2); INSERT INTO mute_rules(name,term,field,enabled,revision) VALUES('Mute','hidden','title',1,1);").unwrap();
+        let counts = unread_counts(State(db.clone())).await.unwrap().0;
+        assert_eq!(counts.total, 2);
+        assert_eq!(
+            counts
+                .folders
+                .iter()
+                .map(|f| (f.id, f.count))
+                .collect::<Vec<_>>(),
+            vec![(1, 1), (2, 0)]
+        );
+        db.lock().unwrap().execute_batch("UPDATE articles SET is_read=1 WHERE id=1; UPDATE feeds SET folder_id=2 WHERE id=2;").unwrap();
+        let counts = unread_counts(State(db)).await.unwrap().0;
+        assert_eq!(counts.total, 1);
+        assert_eq!(
+            counts
+                .folders
+                .iter()
+                .map(|f| (f.id, f.count))
+                .collect::<Vec<_>>(),
+            vec![(1, 0), (2, 1)]
         );
     }
     #[tokio::test]

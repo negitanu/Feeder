@@ -1,0 +1,1 @@
+Today uses the reader's existing calendar-date filters for listing and bulk operations, recalculated when the day or timezone changes. Folder totals use the existing unread endpoint and refresh with global unread counts and library membership. Remove obsolete UI and routes without deleting persistent search data needed for existing database schema compatibility.

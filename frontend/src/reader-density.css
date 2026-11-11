@@ -47,3 +47,32 @@
   .layout-line .card-star { min-height: 44px; }
   .layout-tiles { gap: 0 8px; }
 }
+
+/* A quiet, compact reading surface: metadata shares a line above each title. */
+.list-heading { margin-bottom: 12px; }
+.list-heading h1 { font-size: 20px; line-height: 28px; }
+.list-heading p { margin-top: 0; }
+.reader-actions { margin-bottom: 8px; }
+.advanced-filters { padding: 8px 0; margin-bottom: 8px; }
+.layout-standard .article-open { padding: 8px 4px; }
+.layout-standard .card-copy.article-row-content {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 12px;
+  align-items: baseline;
+}
+.layout-standard .article-row-content > .source { grid-column: 1; grid-row: 1; }
+.layout-standard .article-row-content > .card-meta { grid-column: 2; grid-row: 1; text-align: right; }
+.layout-standard .article-row-content > strong { grid-column: 1 / -1; grid-row: 2; line-height: 20px; }
+.layout-standard .article-row-content > .excerpt { grid-column: 1 / -1; grid-row: 3; line-height: 20px; }
+@media (max-width: 760px) {
+  .main-area { padding-top: 16px; }
+  .list-heading { margin-bottom: 8px; }
+  .list-heading h1 { font-size: 20px; line-height: 28px; }
+  .layout-standard .article-open { padding: 8px 0; }
+  .layout-standard .article-row-content > .excerpt { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+}
+
+.reader-header { display:flex; align-items:center; gap:16px; margin-bottom:8px; }
+.reader-header .list-heading { display:flex; flex:none; align-items:baseline; gap:12px; margin:0; }
+.reader-header .reader-actions { flex:1; margin:0; min-width:0; }
+@media (max-width:760px) { .reader-header { flex-wrap:wrap; gap:8px; } .reader-header .reader-actions { flex:1 1 100%; } }

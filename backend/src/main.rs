@@ -4,9 +4,7 @@ mod catchup;
 mod collection;
 mod collection_health;
 mod collection_runtime;
-mod digest;
 mod discovery;
-mod duplicates;
 mod extensions;
 mod hero;
 mod mute_rules;
@@ -345,16 +343,12 @@ fn base_router(db: Db) -> Router {
         .merge(discovery::routes())
         .merge(opml::routes())
         .merge(settings::routes())
-        .merge(smart_folders::routes())
         .merge(social::routes())
         .merge(read_later::routes())
         .merge(mute_rules::routes())
         .merge(collection_health::routes())
-        .merge(digest::routes())
-        .merge(duplicates::routes())
         .merge(article_revisions::routes())
         .merge(story_groups::routes())
-        .merge(catchup::routes())
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/articles", get(reader::list))
         .route("/api/articles/read-all", post(reader::read_all))

@@ -1,0 +1,3 @@
+- [x] Remove read-later management and duplicate filtering panels.
+- [x] Compact reader heading, controls and article rows across viewports.
+- [x] Verify build, date formatting and backend tests; browser rendering is unavailable in the sandbox.

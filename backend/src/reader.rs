@@ -195,10 +195,6 @@ struct Scope {
     values: Vec<Value>,
     order: &'static str,
 }
-pub fn validate_filters(db: &Connection, f: &Filters) -> Result<(), StatusCode> {
-    scope(db, f).map(|_| ())
-}
-
 fn scope(db: &Connection, f: &Filters) -> Result<Scope, StatusCode> {
     let mut c = Vec::<String>::new();
     let mut v = Vec::<Value>::new();

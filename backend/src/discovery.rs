@@ -29,6 +29,7 @@ struct UrlInput {
 struct Confirm {
     token: String,
     folder_id: Option<i64>,
+    title: Option<String>,
 }
 #[derive(Serialize)]
 struct Candidate {
@@ -247,6 +248,13 @@ async fn confirm(
     if !origin_allowed(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
+    if let Some(title) = input
+        .title
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        collection::clean_name(title)?;
+    }
     let sid = session(&headers).ok_or(StatusCode::FORBIDDEN)?;
     let url = {
         let mut p = plans.0.lock().map_err(collection::err)?;
@@ -256,7 +264,9 @@ async fn confirm(
         }
         p.remove(&input.token).unwrap().url
     };
-    Ok(Json(collection::add_feed(db, &url, input.folder_id).await?))
+    Ok(Json(
+        collection::add_named_feed(db, &url, input.folder_id, input.title.as_deref()).await?,
+    ))
 }
 pub fn routes() -> Router<Db> {
     Router::new()
@@ -299,6 +309,19 @@ mod tests {
             );
             h
         };
+        let invalid_title = confirm(
+            State(db.clone()),
+            Extension(plans.clone()),
+            headers(&sid),
+            Json(Confirm {
+                token: "token".into(),
+                folder_id: None,
+                title: Some("x".repeat(513)),
+            }),
+        )
+        .await;
+        assert!(matches!(invalid_title, Err(StatusCode::BAD_REQUEST)));
+        assert!(plans.0.lock().unwrap().contains_key("token"));
         for (token, session) in [("tampered", sid.as_str()), ("token", other.as_str())] {
             let result = confirm(
                 State(db.clone()),
@@ -307,6 +330,7 @@ mod tests {
                 Json(Confirm {
                     token: token.into(),
                     folder_id: None,
+                    title: None,
                 }),
             )
             .await;
@@ -321,7 +345,8 @@ mod tests {
                 headers(&sid),
                 Json(Confirm {
                     token: "token".into(),
-                    folder_id: None
+                    folder_id: None,
+                    title: None
                 })
             )
             .await,
@@ -342,7 +367,8 @@ mod tests {
                 headers(&sid),
                 Json(Confirm {
                     token: "once".into(),
-                    folder_id: None
+                    folder_id: None,
+                    title: None
                 })
             )
             .await
@@ -355,7 +381,8 @@ mod tests {
                 headers(&sid),
                 Json(Confirm {
                     token: "once".into(),
-                    folder_id: None
+                    folder_id: None,
+                    title: None
                 })
             )
             .await,

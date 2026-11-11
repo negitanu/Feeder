@@ -1,0 +1,4 @@
+- [x] Add Today to the library and remove digest.
+- [x] Show and refresh folder unread counts.
+- [x] Remove saved/shared search UI and routes, retaining detailed search and stored data.
+- [x] Verify build and relevant tests (network socket test excluded in sandbox).

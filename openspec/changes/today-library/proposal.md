@@ -1,0 +1,2 @@
+# Today and library simplification
+Replace the digest with a Today library view of articles published on the current calendar day in the configured display timezone. Show per-folder unread totals, using the same mute rules as the global unread count. Remove saved/shared search and digest surfaces and routes while retaining stored data and existing schema for safe upgrades. Detailed search remains available.

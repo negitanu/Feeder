@@ -1,0 +1,1 @@
+Keep the existing neutral palette, type and unread marker. Remove the two redundant reader panels and align source and timestamp on one metadata line in standard rows. Reduce header and row spacing using a consistent rhythm; preserve existing line and tile views and responsive touch controls.
