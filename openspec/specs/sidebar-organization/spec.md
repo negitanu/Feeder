@@ -29,6 +29,12 @@ The server SHALL atomically validate complete expected and desired source snapsh
 ### Requirement: Accessible direct manipulation
 The sidebar SHALL provide pointer/touch handles with insertion feedback, keyboard Up/Down/Home/End ordering, and a menu-accessible folder movement action. Sorting SHALL preserve focus, selection and folder disclosure, with errors announced. Touch scrolling outside handles SHALL remain available.
 
+#### Scenario: Handle visibility
+- **WHEN** a reader uses a mouse and points at a folder or feed row
+- **THEN** that row’s order handle appears; it is otherwise hidden unless focused by keyboard
+- **WHEN** the primary input does not support hover
+- **THEN** order handles remain visible for touch manipulation
+
 #### Scenario: Keyboard and pointer reorder
 - **WHEN** a reader reorders a source by handle or keyboard and reloads
 - **THEN** the new position persists without navigating and the moved control retains focus after saving

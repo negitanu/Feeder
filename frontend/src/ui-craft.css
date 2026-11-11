@@ -37,6 +37,7 @@ input[type=file]::file-selector-button{border:1px solid var(--line);border-radiu
 .source-button.active{font-weight:500}.source-button span{font-weight:400}
 .feed-source small{font-size:11px;line-height:16px}.folder-toggle,.mini-menu,.order-handle{display:inline-flex;align-items:center;justify-content:center;height:32px;min-height:32px;width:24px;padding:4px;border-radius:6px}
 .mini-menu{width:28px}.order-handle{opacity:.65}.order-handle:hover,.order-handle:focus-visible{opacity:1}
+@media (hover:hover) and (pointer:fine){.order-handle{opacity:0}.folder-row:hover>.order-handle,.order-handle:focus-visible{opacity:1}}
 .feed-menu{padding:8px;border-radius:12px;gap:4px}.feed-menu button{font-size:13px;min-height:36px;padding:8px 12px;border-radius:6px}
 .sidebar-status{font-size:12px;line-height:20px;padding:12px 4px}
 .main-area{padding:24px 24px 64px;min-width:0}
