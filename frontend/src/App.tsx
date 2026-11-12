@@ -19,6 +19,7 @@ import SubscriptionManager from './SubscriptionManager'
 import ReadabilityPanel from './ReadabilityPanel'
 import brandMark from './brand-mark.svg'
 import { apiFetch } from './apiFetch'
+import { usePullToRefresh } from './usePullToRefresh'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CollectionPanel from './CollectionPanel'
 import ApiKeysPanel from './ApiKeysPanel'
@@ -147,6 +148,7 @@ function App() {
   const detailPreviousRef = useRef<HTMLButtonElement>(null)
   const detailNextRef = useRef<HTMLButtonElement>(null)
   const navigationFocus = useRef<'previous' | 'next' | null>(null)
+  const pullState = usePullToRefresh(!mobileSidebarOpen && !selected && openingId === null && !editingFeed && !editingFolder)
   const mainRef = useRef<HTMLElement>(null)
   const visitRemovals = useRef(new Set<number>())
   const originalReadPending = useRef(new Set<number>())
@@ -492,7 +494,7 @@ function App() {
   }
   const detailIndex = selected ? detailSequence.findIndex(item => item.id === selected.id) : -1
 
-  return <div className="app-shell"><a className="skip-navigation" href="#page-content">本文へ移動</a>
+  return <div className="app-shell">{pullState !== 'idle' && <div className="pull-refresh" role="status" aria-live="polite">{pullState === 'refreshing' ? '更新しています…' : pullState === 'ready' ? '離して更新' : '引っ張って更新'}</div>}<a className="skip-navigation" href="#page-content">本文へ移動</a>
     <header className="topbar">
       <button ref={menuButtonRef} type="button" className="mobile-menu-button" aria-label={mobileSidebarOpen ? "メニューを閉じる" : "メニューを開く"} aria-controls="reader-sidebar" aria-expanded={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(value => !value)}>{mobileSidebarOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</button>
       <a className="brand" href="#" onClick={e => { e.preventDefault(); closeDetail(false); setPage('read'); setSource(null) }} aria-label="Feeder ホーム"><img className="brand-mark" src={brandMark} alt="" /><span>feeder</span></a>

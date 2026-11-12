@@ -1,0 +1,2 @@
+- [x] Implement standalone pull gesture and feedback.
+- [x] Verify gesture boundaries and mobile browser behavior with simulated touch.
