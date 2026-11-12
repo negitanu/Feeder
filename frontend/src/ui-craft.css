@@ -100,7 +100,7 @@ kbd{font:inherit;font-size:11px;padding:2px 4px;border:1px solid var(--line);bor
 .edit-dialog{padding:24px;border-radius:16px;gap:16px}.edit-dialog h2{font-size:20px;line-height:28px;font-weight:500}.dialog-actions{gap:8px}.dialog-actions button{padding:8px 16px;font-size:13px;min-height:36px}
 .error-message{align-items:start;gap:12px;font-size:13px;line-height:20px;padding:12px 16px;border-radius:8px;overflow-wrap:anywhere}.success-message{font-size:13px;line-height:20px}
 @media(max-width:1000px){.topbar{gap:16px}.brand{min-width:120px}.theme-control .ui-icon{display:none}.main-area{padding-left:20px;padding-right:20px}}
-@media(max-width:760px){
+@media(max-width:767px){
  .topbar{padding:8px 12px;gap:8px;min-height:64px}.brand{min-width:0;font-size:16px}.global-nav{gap:4px;flex:1}.global-nav button{font-size:13px;min-height:40px;padding:8px 12px}.theme-control select{min-height:36px;padding:4px;width:80px;font-size:12px}
  .search{order:3;flex-basis:100%;max-width:none;min-height:40px}.search input{min-height:40px}.sidebar{padding:12px;max-height:310px}.filter{min-height:40px;font-size:12px;gap:8px;padding:8px}.filters{gap:4px;flex-wrap:wrap}.source-button{min-height:40px}.folder-toggle,.mini-menu,.order-handle{min-height:36px;width:28px}
  .main-area{padding:24px 12px 48px}.list-heading{margin-bottom:16px}.list-heading h1{font-size:22px;line-height:32px}.list-heading p{font-size:12px}.reader-actions{gap:8px 12px}.reader-actions .read-all{margin-left:0;min-height:40px}.layout-control{font-size:12px}.timezone-label{font-size:11px}

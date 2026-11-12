@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react'
-const MIN = 200, MAX = 480, DEFAULT = 250
+const MIN = 200, MAX = 480, DEFAULT = 220
 function savedWidth() {
   try { const raw = localStorage.getItem('feeder-sidebar-width'); const n = raw === null ? NaN : Number(raw); return Number.isFinite(n) && n >= MIN && n <= MAX ? n : DEFAULT } catch { return DEFAULT }
 }
-export default function SidebarWidth({ children, onWidthChange }: { children: ReactNode; onWidthChange: (width: number) => void }) {
+export default function SidebarWidth({ children, onWidthChange, settings = false }: { children: ReactNode; onWidthChange: (width: number) => void; settings?: boolean }) {
   const [width, setWidth] = useState(savedWidth)
   const [available, setAvailable] = useState(MAX)
   const workspace = useRef<HTMLDivElement>(null)
@@ -40,7 +40,7 @@ export default function SidebarWidth({ children, onWidthChange }: { children: Re
     initial.current = null
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
   }
-  return <div className="workspace" ref={workspace} style={{ '--sidebar-width': `${visible}px` } as CSSProperties}>
+  return <div className={`workspace${settings ? ' workspace-settings' : ''}`} ref={workspace} style={{ '--sidebar-width': `${visible}px` } as CSSProperties}>
     {children}
     <div className="sidebar-separator" role="separator" aria-label="サイドバーの幅" aria-orientation="vertical" aria-controls="reader-sidebar" aria-valuemin={MIN} aria-valuemax={available} aria-valuenow={visible} tabIndex={0} onKeyDown={key} onPointerDown={down} onPointerMove={e => { if (initial.current) change(initial.current.width + e.clientX - initial.current.x) }} onPointerUp={e => end(e,false)} onPointerCancel={e => end(e,true)} onLostPointerCapture={() => { initial.current = null }} />
   </div>

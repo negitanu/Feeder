@@ -6,14 +6,15 @@ import MuteRulesPanel from './MuteRulesPanel'
 import CollectionHealthPanel from './CollectionHealthPanel'
 import ArticleRevisionsPanel from './ArticleRevisionsPanel'
 import RelatedArticlesPanel from './RelatedArticlesPanel'
-import { ArticleRowContent } from './ArticleRowContent'
+import { ArticleRowContent, formatArticlePublished } from './ArticleRowContent'
+import DetailSplitter, { storedReaderSplit } from './DetailSplitter'
 import './integration.css'
 import { parseReaderLocation, readerUrl } from './readerLocation'
 import type { ReaderLocation } from './readerLocation'
 import ArticleBulkActions from './ArticleBulkActions'
 import DetailPresence from './DetailPresence'
 import ArticleHero from './ArticleHero'
-import { Search, List, Circle, Star, History, SunMoon, CalendarDays, ArrowLeft, Inbox, Menu, X } from 'lucide-react'
+import { Search, List, Circle, Star, History, SunMoon, CalendarDays, ArrowLeft, Inbox, Menu, X, BookOpenCheck, Mail, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import SubscriptionManager from './SubscriptionManager'
 import ReadabilityPanel from './ReadabilityPanel'
@@ -54,13 +55,14 @@ function App() {
   const [readerSettings, setReaderSettings] = useState<ReaderSettings | null>(null)
   const [layout, setLayout] = useState<Layout>(storedLayout)
   const [sidebarWidth, setSidebarWidth] = useState(250)
+  const [readerSplit, setReaderSplit] = useState(storedReaderSplit)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 760px)').matches)
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const menuCloseRef = useRef<HTMLButtonElement>(null)
   const swipeStart = useRef<{ x: number; y: number; open: boolean } | null>(null)
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 760px)')
+    const media = window.matchMedia('(max-width: 767px)')
     const update = () => { setIsMobile(media.matches); if (!media.matches) setMobileSidebarOpen(false) }
     media.addEventListener('change', update)
     return () => media.removeEventListener('change', update)
@@ -103,6 +105,10 @@ function App() {
   const [draftScope, setDraftScope] = useState(() => ({ scope: initialLocation.current.applied.scope, any: initialLocation.current.applied.any || '', exclude: initialLocation.current.applied.exclude || '', published_from: initialLocation.current.applied.published_from || '', published_to: initialLocation.current.applied.published_to || '', feed_ids: initialLocation.current.applied.feed_ids || '', order: initialLocation.current.applied.order }))
   const [applied, setApplied] = useState<AppliedFilters>(initialLocation.current.applied)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [mobileSelecting, setMobileSelecting] = useState(false)
+  const [swipeActionsId, setSwipeActionsId] = useState<number | null>(null)
+  const articleTouch = useRef<{ id: number; x: number; y: number } | null>(null)
+  const suppressArticleClick = useRef(false)
   const [page, setPage] = useState<'read' | 'settings'>('read')
   const [folders, setFolders] = useState<Folder[]>([])
   const [feeds, setFeeds] = useState<Feed[]>([])
@@ -113,6 +119,7 @@ function App() {
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null)
   const originalFeedUrl = useRef('')
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState(initialLocation.current.search)
   const [search, setSearch] = useState(initialLocation.current.search)
   const [items, setItems] = useState<Article[]>([])
@@ -145,6 +152,9 @@ function App() {
   const detailGeneration = useRef(0)
   const detailRef = useRef<HTMLElement>(null)
   const detailCloseRef = useRef<HTMLButtonElement>(null)
+  const mobileDetailCloseRef = useRef<HTMLButtonElement>(null)
+  const mobileDetailPreviousRef = useRef<HTMLButtonElement>(null)
+  const mobileDetailNextRef = useRef<HTMLButtonElement>(null)
   const detailPreviousRef = useRef<HTMLButtonElement>(null)
   const detailNextRef = useRef<HTMLButtonElement>(null)
   const navigationFocus = useRef<'previous' | 'next' | null>(null)
@@ -233,22 +243,27 @@ function App() {
     if (!restoreFocus) returnFocus.current = null
     setOpeningId(null); setSelected(null); setDetailSequence([])
   }
-  useEffect(() => { if (openingId !== null) detailCloseRef.current?.focus({ preventScroll: true }) }, [openingId])
+  useEffect(() => { if (openingId !== null) (isMobile ? mobileDetailCloseRef : detailCloseRef).current?.focus({ preventScroll: true }) }, [openingId, isMobile])
   useEffect(() => {
     if (openingId !== null || !selected || !navigationFocus.current) return
-    const preferred = navigationFocus.current === 'next' ? detailNextRef.current : detailPreviousRef.current
-    const fallback = navigationFocus.current === 'next' ? detailPreviousRef.current : detailNextRef.current
+    const tabletButtons = !isMobile && !window.matchMedia('(min-width: 1024px)').matches ? detailRef.current?.querySelectorAll<HTMLButtonElement>('.detail-navigation button') : null
+    const nextButton = isMobile ? mobileDetailNextRef.current : tabletButtons?.[1] ?? detailNextRef.current
+    const previousButton = isMobile ? mobileDetailPreviousRef.current : tabletButtons?.[0] ?? detailPreviousRef.current
+    const preferred = navigationFocus.current === 'next' ? nextButton : previousButton
+    const fallback = navigationFocus.current === 'next' ? previousButton : nextButton
     navigationFocus.current = null
-    const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : detailCloseRef.current
+    const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : (isMobile ? mobileDetailCloseRef.current : detailCloseRef.current)
     target?.focus({ preventScroll: true })
-  }, [openingId, selected])
+  }, [openingId, selected, isMobile])
   useEffect(() => {
     if ((!selected && openingId === null) || page !== 'read') return
     const dismiss = (event: PointerEvent) => {
+      if (window.matchMedia('(min-width: 1024px)').matches) return
       if (event.button !== 0 || !event.isPrimary || !(event.target instanceof Node) || detailRef.current?.contains(event.target)) return
       closeDetail(false)
     }
     const dismissKeyboardClick = (event: MouseEvent) => {
+      if (window.matchMedia('(min-width: 1024px)').matches) return
       if (event.button !== 0 || !(event.target instanceof Node) || detailRef.current?.contains(event.target)) return
       const current = detailGeneration.current
       window.setTimeout(() => { if (detailGeneration.current === current) closeDetail(false) }, 0)
@@ -360,7 +375,7 @@ function App() {
       const p = new URLSearchParams(params); p.set('cursor', nextCursor)
       const result = await request<ArticlePage>(`/api/articles?${p}`)
       if (currentGeneration !== generation.current) return
-      setItems(current => [...current, ...result.items.filter(a => !current.some(c => c.id === a.id))]); setTotal(result.total); setHasMore(result.has_more); setNextCursor(result.next_cursor)
+      setItems(current => [...current, ...result.items.filter(a => !current.some(c => c.id === a.id))]); setDetailSequence(current => { if (!current.length) return current; const ids = new Set(current.map(item => item.id)); return [...current, ...result.items.filter(item => !ids.has(item.id))] }); setTotal(result.total); setHasMore(result.has_more); setNextCursor(result.next_cursor)
     } catch (e) {
       if (currentGeneration === generation.current) setMoreError({ message: e instanceof RequestError && e.status === 409 ? '一覧の条件が変更されました。最新の一覧を読み直してください。' : '続きの記事を読み込めませんでした。', fresh: e instanceof RequestError && e.status === 409 })
     } finally {
@@ -470,14 +485,6 @@ function App() {
   }
   const json = (body: unknown): RequestInit => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   function selectSource(value: { kind: 'feed' | 'folder'; id: number } | null) { setMobileSidebarOpen(false); initialViewChosen.current = true; closeDetail(false); setSource(value); setPage('read') }
-  function detailTimestamp(value: string) {
-    const normalized = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value) ? value.replace(' ', 'T') + 'Z' : value
-    const instant = new Date(normalized)
-    if (Number.isNaN(instant.getTime())) return '公開日時不明'
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(instant)
-    const part = (name: string) => parts.find(item => item.type === name)?.value ?? ''
-    return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}:${part('second')} JST`
-  }
   function openById(id: number, sequenceIds?: number[]) {
     const itemById = (articleId: number): Article => items.find(item => item.id === articleId) ?? { id: articleId, title: '', content: '', url: '', published: '', is_read: false, is_starred: false, is_saved_for_later: false }
     void openArticle(itemById(id), undefined, sequenceIds?.map(itemById))
@@ -493,24 +500,50 @@ function App() {
     if (saved) visitRemovals.current.delete(id)
   }
   const detailIndex = selected ? detailSequence.findIndex(item => item.id === selected.id) : -1
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (page !== 'read' || !window.matchMedia('(min-width: 1024px)').matches || event.defaultPrevented || event.isComposing || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || editingFeed || editingFolder) return
+      const target = event.target
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="menu"], [role="textbox"]')) return
+      if (event.key === '/') { event.preventDefault(); searchRef.current?.focus(); return }
+      if (event.key === 'j' || event.key === 'k') {
+        const sequence = selected ? detailSequence : items
+        const index = selected ? sequence.findIndex(item => item.id === selected.id) : -1
+        const next = sequence[index < 0 ? (event.key === 'j' ? 0 : sequence.length - 1) : index + (event.key === 'j' ? 1 : -1)]
+        if (next) { event.preventDefault(); void openArticle(next, selected ? (event.key === 'j' ? 'next' : 'previous') : undefined) }
+        return
+      }
+      if (!selected || openingId !== null) return
+      if (event.key === 'm') { event.preventDefault(); void updateState(selected, { read: !selected.is_read }) }
+      else if (event.key === 's') { event.preventDefault(); void updateState(selected, { starred: !selected.is_starred }) }
+      else if (event.key === 'b') { event.preventDefault(); detailRef.current?.querySelector<HTMLButtonElement>('.read-later-button')?.click() }
+      else if (event.key === 'v' || (event.key === 'Enter' && !(target instanceof Element && target.closest('button, a, summary, [role="button"]')))) {
+        const url = originalUrl(selected.url)
+        if (url) { event.preventDefault(); window.open(url, '_blank', 'noopener,noreferrer'); void markOriginalRead(selected) }
+      }
+    }
+    document.addEventListener('keydown', handleShortcut)
+    return () => document.removeEventListener('keydown', handleShortcut)
+  })
 
-  return <div className="app-shell">{pullState !== 'idle' && <div className="pull-refresh" role="status" aria-live="polite">{pullState === 'refreshing' ? '更新しています…' : pullState === 'ready' ? '離して更新' : '引っ張って更新'}</div>}<a className="skip-navigation" href="#page-content">本文へ移動</a>
-    <header className="topbar">
+  return <div className={`app-shell${isMobile && page === 'read' && (selected || openingId !== null) ? ' mobile-detail-open' : ''}`}>{pullState !== 'idle' && <div className="pull-refresh" role="status" aria-live="polite">{pullState === 'refreshing' ? '更新しています…' : pullState === 'ready' ? '離して更新' : '引っ張って更新'}</div>}<a className="skip-navigation" href="#page-content">本文へ移動</a>
+    <header className="topbar" inert={isMobile && page === 'read' && (selected !== null || openingId !== null)}>
       <button ref={menuButtonRef} type="button" className="mobile-menu-button" aria-label={mobileSidebarOpen ? "メニューを閉じる" : "メニューを開く"} aria-controls="reader-sidebar" aria-expanded={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(value => !value)}>{mobileSidebarOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</button>
       <a className="brand" href="#" onClick={e => { e.preventDefault(); closeDetail(false); setPage('read'); setSource(null) }} aria-label="Feeder ホーム"><img className="brand-mark" src={brandMark} alt="" /><span>feeder</span></a>
       <nav className="global-nav" aria-label="メインナビゲーション"><button className={page === 'read' ? 'active' : ''} onClick={() => { closeDetail(false); setPage('read') }}>読む</button><button className={page === 'settings' ? 'active' : ''} onClick={() => { closeDetail(false); setPage('settings') }}>設定</button></nav>
-      <form className="search" onSubmit={submitSearch} role="search"><Search className="ui-icon" aria-hidden="true" /><input aria-label="記事を検索" placeholder="記事を検索" value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" aria-label="検索">検索</button></form>
-      <label className="theme-control"><span className="sr-only">テーマ</span><select aria-label="テーマ" value={theme} onChange={e => setTheme(e.target.value as Theme)}><option value="system">システム</option><option value="light">ライト</option><option value="dark">ダーク</option></select><SunMoon className="ui-icon" aria-hidden="true" /></label>
+      <form className="search" onSubmit={submitSearch} role="search"><Search className="ui-icon" aria-hidden="true" /><input ref={searchRef} aria-label="記事を検索" placeholder="記事を検索" value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" aria-label="検索">検索</button></form>
+      <details className="shortcut-help"><summary aria-label="キーボードショートカット">キーボード</summary><div><p><kbd>j</kbd> / <kbd>k</kbd> 次 / 前の記事</p><p><kbd>m</kbd> 既読・未読　<kbd>s</kbd> スター</p><p><kbd>b</kbd> あとで読む　<kbd>v</kbd> / <kbd>Enter</kbd> 元記事</p><p><kbd>Esc</kbd> 閉じる　<kbd>/</kbd> 検索</p></div></details><label className="theme-control"><span className="sr-only">テーマ</span><select aria-label="テーマ" value={theme} onChange={e => setTheme(e.target.value as Theme)}><option value="system">システム</option><option value="light">ライト</option><option value="dark">ダーク</option></select><SunMoon className="ui-icon" aria-hidden="true" /></label>
     </header>
     {isMobile && mobileSidebarOpen && <button className="mobile-sidebar-backdrop" aria-label="メニューを閉じる" onClick={() => setMobileSidebarOpen(false)} />}
-    <SidebarWidth onWidthChange={setSidebarWidth}>
+    <SidebarWidth onWidthChange={setSidebarWidth} settings={page === 'settings'}>
       <aside id="reader-sidebar" className={`sidebar${mobileSidebarOpen ? ' mobile-sidebar-open' : ''}`} aria-label="記事フィルター" inert={isMobile && !mobileSidebarOpen}><div className="mobile-sidebar-heading"><span>ライブラリ</span><button ref={menuCloseRef} type="button" aria-label="メニューを閉じる" onClick={() => { setMobileSidebarOpen(false); menuButtonRef.current?.focus() }}><X aria-hidden="true" /></button></div><div className="side-heading">ライブラリ</div><nav className="filters">
-        {([['all', 'すべて', List], ['today', 'Today', CalendarDays], ['unread', '未読', Circle], ['starred', 'スター付き', Star], ['recent', '最近読んだ記事', History], ['later', 'あとで読む', Inbox]] as [Filter, string, LucideIcon][]).map(([key, label, Icon]) => <button key={key} className={`filter ${(key === 'unread' ? globalUnreadActive : filter === key) ? 'active' : ''}`} onClick={() => { setMobileSidebarOpen(false); initialViewChosen.current = true; setFilter(key); setSource(null); closeDetail(false); setPage('read'); if (key === 'unread' || key === 'today') { setSearch(''); setQuery(''); setApplied(current => ({ order: 'new', scope: 'both', include_muted: current.include_muted })); setDraftScope({ scope: 'both', order: 'new', any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }) } if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={(key === 'unread' ? globalUnreadActive : filter === key) ? 'page' : undefined}><span className="filter-icon" aria-hidden="true"><Icon className="ui-icon" /></span>{label}{key === 'all' && <span className="count">{total}</span>}{key === 'today' && todayUnread !== null && <span className="count unread-count" aria-label={`本日の未読 ${todayUnread} 件`}>{todayUnread}</span>}{key === 'unread' && globalUnread !== null && <span className="count unread-count" aria-label={`未読 ${globalUnread} 件`}>{globalUnread}</span>}</button>)}
+        {([['all', 'すべて', List], ['today', 'Today', CalendarDays], ['unread', '未読', Circle], ['starred', 'スター付き', Star], ['recent', '最近読んだ記事', History], ['later', 'あとで読む', Inbox]] as [Filter, string, LucideIcon][]).map(([key, label, Icon]) => <button key={key} className={`filter ${(key === 'unread' ? globalUnreadActive : filter === key) ? 'active' : ''}`} onClick={() => { setMobileSidebarOpen(false); initialViewChosen.current = true; setFilter(key); setSource(null); closeDetail(false); setPage('read'); if (key === 'unread' || key === 'today') { setSearch(''); setQuery(''); setApplied(current => ({ order: 'new', scope: 'both', include_muted: current.include_muted })); setDraftScope({ scope: 'both', order: 'new', any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }) } if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={(key === 'unread' ? globalUnreadActive : filter === key) ? 'page' : undefined}><span className="filter-icon" aria-hidden="true"><Icon className="ui-icon" /></span>{label}{key === 'today' && todayUnread !== null && <span className="count unread-count" aria-label={`本日の未読 ${todayUnread} 件`}>{todayUnread}</span>}{key === 'unread' && globalUnread !== null && <span className="count unread-count" aria-label={`未読 ${globalUnread} 件`}>{globalUnread}</span>}</button>)}
       </nav><LibrarySidebar folders={folders} feeds={feeds} folderUnread={folderUnread} source={source} collapsed={collapsed} onToggle={id => setCollapsed(current => current.includes(id) ? current.filter(value => value !== id) : [...current,id])} onSelect={selectSource} onEditFeed={feed => { originalFeedUrl.current = feed.url; setLibraryError(''); setEditingFeed(feed) }} onEditFolder={setEditingFolder} onMutate={mutate} onReload={loadLibrary} onMembershipChanged={ids => { if (source?.kind === 'folder' && ids.includes(source.id)) { setSelectedIds([]); setRefreshVersion(value => value + 1) } }} />{libraryError && <div className="sidebar-error" role="alert">{libraryError}</div>}</aside>
-      <main id="page-content" tabIndex={-1} className="main-area" ref={mainRef}>
-        {page === 'settings' && <><header className="settings-heading"><h1>設定</h1><p>購読・収集、表示、データの持ち出しとAPIアクセスを管理します。</p></header><nav className="settings-jumps" aria-label="設定の項目">{[['subscriptions','購読の追加'],['collection','自動収集'],['subscriptions-list','購読管理'],['imports','OPML'],['appearance','表示設定'],['export','設定の持ち出し'],['readability','読みやすさ'],['social','公開SNS'],['mute','ミュート'],['health','収集状態'],['keys','APIキー']].map(([id,label]) => <a key={id} href={`#settings-${id}`} onClick={event => { event.preventDefault(); const target = document.getElementById(`settings-${id}`); target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true }) }}>{label}</a>)}</nav><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /></>}
+      <main id="page-content" tabIndex={-1} className={`main-area ${page === 'settings' ? 'settings-view' : 'reader-view'}${page === 'read' && (selected || openingId !== null) ? ' has-detail' : ''}`} style={{ '--reader-split': readerSplit / 100 } as React.CSSProperties} ref={mainRef}>
+        {page === 'settings' && <><header className="settings-heading"><h1>設定</h1><p>購読・収集、表示、データの持ち出しとAPIアクセスを管理します。</p></header><nav className="settings-jumps" aria-label="設定の項目">{[['購読・収集', [['subscriptions','購読の追加'],['collection','自動収集'],['subscriptions-list','購読管理'],['imports','OPML'],['health','収集状態']]], ['表示・読書', [['appearance','表示設定'],['readability','読みやすさ'],['mute','ミュート']]], ['連携・データ', [['social','公開SNS'],['export','設定の持ち出し'],['keys','APIキー']]]].map(([group, links]) => <div className="settings-nav-group" key={group as string}><span>{group as string}</span>{(links as string[][]).map(([id,label]) => <a key={id} href={`#settings-${id}`} onClick={event => { event.preventDefault(); const target = document.getElementById(`settings-${id}`); target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true }) }}>{label}</a>)}</div>)}</nav><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /></>}
         {page === 'settings' && <><section className="collection-page collection-section" id="settings-subscriptions-list" tabIndex={-1}><SubscriptionManager feeds={feeds} folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onEdit={feed => { originalFeedUrl.current = feed.url; setLibraryError(''); setEditingFeed(feed) }} /></section><ReaderSettingsPanel settings={readerSettings} presentation={{ appearance: theme, width: Math.round(sidebarWidth), layout, collapsed_folders: [...new Set(collapsed.filter(id => id > 0 && folders.some(folder => folder.id === id)))].slice(0,2000) }} onSaved={settingsSaved} onLayout={setLayout} onTheme={setTheme} onRetry={() => void loadReaderSettings()} /><div className="collection-page" id="settings-readability" tabIndex={-1}><ReadabilityPanel /><ReadLaterSettings /></div><SocialSourcesPanel onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} /><div className="collection-page" id="settings-mute" tabIndex={-1}><MuteRulesPanel feeds={feeds} onChanged={() => { void loadUnreadCount(); setRefreshVersion(value => value + 1) }} /></div><div className="collection-page" id="settings-health" tabIndex={-1}><CollectionHealthPanel timezone={readerSettings?.display_timezone ?? 'UTC'} refreshKey={refreshVersion} onRetry={async id => { try { await request(`/api/feeds/${id}/refresh`, { method: 'POST' }); void loadLibrary(); void loadUnreadCount() } finally { setRefreshVersion(value => value + 1) } }} /></div><ApiKeysPanel />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
         {page === 'read' && <>
+        {(selected || openingId !== null) && <DetailSplitter value={readerSplit} onChange={setReaderSplit} />}
         <DetailPresence open={selected !== null || openingId !== null}>{(selected || openingId !== null) && <section ref={detailRef} className="article-detail" style={{ top: detailTop }} aria-label="記事の詳細" aria-busy={openingId !== null} onKeyDown={event => {
           if (!selected || openingId !== null || event.defaultPrevented || event.nativeEvent.isComposing || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return
           const target = event.target
@@ -521,14 +554,22 @@ function App() {
           if (index < 0 || !next) return
           event.preventDefault(); void openArticle(next, direction)
         }}>
-          <div className="detail-toolbar"><button ref={detailCloseRef} className="back-button" onClick={() => closeDetail(true)}><ArrowLeft className="ui-icon" aria-hidden="true" /> <span>一覧に戻る</span></button>{selected && openingId === null && <><button onClick={() => void updateState(selected, { read: !selected.is_read })}>{selected.is_read ? '未読にする' : '既読にする'}</button><ReadLaterButton key={selected.id} id={selected.id} saved={!!selected.is_saved_for_later} onChanged={saved => updateLater(selected.id, saved)} /><button className={`icon-button star-button ${selected.is_starred ? 'is-starred' : ''}`} aria-label={selected.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={selected.is_starred} onClick={() => void updateState(selected, { starred: !selected.is_starred })}><Star className="ui-icon" aria-hidden="true" fill={selected.is_starred ? 'currentColor' : 'none'} /></button></>}</div>
+          <div className="detail-toolbar"><div className="detail-toolbar-navigation" aria-label="記事の移動"><button ref={detailPreviousRef} type="button" disabled={detailIndex <= 0 || openingId !== null} onClick={() => void openArticle(detailSequence[detailIndex - 1], 'previous')} aria-label="前の記事" title="前の記事 (k)"><ChevronLeft className="ui-icon" aria-hidden="true" /><span className="toolbar-nav-label">前の記事</span><kbd>k</kbd></button><button ref={detailNextRef} type="button" disabled={detailIndex < 0 || detailIndex >= detailSequence.length - 1 || openingId !== null} onClick={() => void openArticle(detailSequence[detailIndex + 1], 'next')} aria-label="次の記事" title="次の記事 (j)"><span className="toolbar-nav-label">次の記事</span><ChevronRight className="ui-icon" aria-hidden="true" /><kbd>j</kbd></button></div>{selected && openingId === null && <><button className="detail-read-toggle" onClick={() => void updateState(selected, { read: !selected.is_read })}>{selected.is_read ? '未読にする' : '既読にする'}</button><ReadLaterButton toolbar key={selected.id} id={selected.id} saved={!!selected.is_saved_for_later} onChanged={saved => updateLater(selected.id, saved)} /><button className={`icon-button star-button ${selected.is_starred ? 'is-starred' : ''}`} aria-label={selected.is_starred ? 'スターを解除' : 'スターを付ける'} title={selected.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={selected.is_starred} onClick={() => void updateState(selected, { starred: !selected.is_starred })}><Star className="ui-icon" aria-hidden="true" fill={selected.is_starred ? 'currentColor' : 'none'} /></button>{originalUrl(selected.url) && <a className="detail-original" href={originalUrl(selected.url)!} target="_blank" rel="noopener noreferrer" aria-label="元記事を開く" title="元記事を開く (v)" onClick={() => void markOriginalRead(selected)}><ExternalLink className="ui-icon" aria-hidden="true" /></a>}</>}<button ref={detailCloseRef} className="back-button" onClick={() => closeDetail(true)} aria-label="記事を閉じる" title="閉じる (Esc)"><ArrowLeft className="ui-icon" aria-hidden="true" /> <span className="detail-back-label">一覧に戻る</span><span className="detail-close-label"><X className="ui-icon" aria-hidden="true" /><span className="toolbar-label">閉じる</span> <kbd>Esc</kbd></span></button></div>
+          <nav className="mobile-detail-actions" aria-label="記事の操作">
+            <button ref={mobileDetailCloseRef} type="button" onClick={() => closeDetail(true)} aria-label="一覧に戻る"><ArrowLeft className="ui-icon" aria-hidden="true" /><span>戻る</span></button>
+            <button type="button" disabled={!selected || openingId !== null} onClick={() => selected && void updateState(selected, { read: !selected.is_read })} aria-label={selected?.is_read ? '未読にする' : '既読にする'}>{selected?.is_read ? <Mail className="ui-icon" aria-hidden="true" /> : <BookOpenCheck className="ui-icon" aria-hidden="true" />}<span>{selected?.is_read ? '未読' : '既読'}</span></button>
+            {selected && openingId === null ? <ReadLaterButton key={`mobile-${selected.id}`} compact mobileLabel id={selected.id} saved={!!selected.is_saved_for_later} onChanged={saved => updateLater(selected.id, saved)} /> : <button type="button" disabled>あとで</button>}
+            <button type="button" disabled={!selected || openingId !== null} onClick={() => selected && void updateState(selected, { starred: !selected.is_starred })} aria-label={selected?.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={selected?.is_starred}><Star className="ui-icon" aria-hidden="true" fill={selected?.is_starred ? 'currentColor' : 'none'} /><span>スター</span></button>
+            <button ref={mobileDetailPreviousRef} type="button" disabled={detailIndex <= 0 || openingId !== null} onClick={() => void openArticle(detailSequence[detailIndex - 1], 'previous')} aria-label="前の記事"><ChevronLeft className="ui-icon" aria-hidden="true" /><span>前へ</span></button>
+            <button ref={mobileDetailNextRef} type="button" disabled={detailIndex < 0 || detailIndex >= detailSequence.length - 1 || openingId !== null} onClick={() => void openArticle(detailSequence[detailIndex + 1], 'next')} aria-label="次の記事"><ChevronRight className="ui-icon" aria-hidden="true" /><span>次へ</span></button>
+          </nav>
           {selected && openingId === null && applied.include_muted && <MuteReasons key={selected.id} id={selected.id} />}
           {selected && openingId === null && <p className="detail-keyboard-help">記事を移動 <kbd>←</kbd> <kbd>→</kbd></p>}
-          {openingId !== null ? <div className="detail-loading" role="status">記事を読み込んでいます...</div> : selected && <>{error && <div className="error-message" role="alert">{error}</div>}<article className="article-body">{selected.image_url && <ArticleHero key={selected.id} id={selected.id} />}<h1>{originalUrl(selected.url) ? <a href={originalUrl(selected.url)!} target="_blank" rel="noopener noreferrer">{selected.title}</a> : selected.title}</h1><div className="article-meta"><time dateTime={selected.published}>{detailTimestamp(selected.published)}</time></div><hr className="detail-separator" /><div className="article-text">{selected.content}</div><hr className="detail-separator" /></article><ArticleRevisionsPanel key={`revisions-${selected.id}`} articleId={selected.id} timezone={readerSettings?.display_timezone ?? 'UTC'} /><RelatedArticlesPanel key={`related-${selected.id}`} articleId={selected.id} onOpen={openById} />{detailIndex >= 0 && <nav className="detail-navigation" aria-label="記事の移動"><button ref={detailPreviousRef} type="button" disabled={detailIndex === 0} onClick={() => void openArticle(detailSequence[detailIndex - 1], 'previous')}>前の記事</button><span aria-live="polite">{detailIndex + 1} / {detailSequence.length}</span><button ref={detailNextRef} type="button" disabled={detailIndex >= detailSequence.length - 1} onClick={() => void openArticle(detailSequence[detailIndex + 1], 'next')}>次の記事</button></nav>}</>}
+          {openingId !== null ? <div className="detail-loading" role="status">記事を読み込んでいます...</div> : selected && <>{error && <div className="error-message" role="alert">{error}</div>}<article className="article-body"><h1>{originalUrl(selected.url) ? <a href={originalUrl(selected.url)!} target="_blank" rel="noopener noreferrer">{selected.title}</a> : selected.title}</h1><div className="article-meta">{(() => { const feed = feeds.find(item => item.id === selected.feed_id); const url = feed && originalUrl(feed.url); let name = selected.feed_title?.trim() || feed?.title; if (!name) { try { name = new URL(selected.url).hostname.replace(/^www\./i, '') } catch { name = '記事' } } return url ? <a href={url} target="_blank" rel="noopener noreferrer">{name}</a> : <span>{name}</span> })()}<span aria-hidden="true">・</span><time dateTime={selected.published}>{formatArticlePublished(selected.published, readerSettings?.display_timezone ?? 'UTC').replace(/:(\d{2}) (JST|UTC)$/, ' $2')}</time><span aria-hidden="true">・</span><span>読了目安 約{Math.max(1, Math.ceil(selected.content.length / 500))}分</span></div>{selected.image_url && <ArticleHero key={selected.id} id={selected.id} />}<hr className="detail-separator" /><div className="article-text">{selected.content}</div><hr className="detail-separator" /></article><ArticleRevisionsPanel key={`revisions-${selected.id}`} articleId={selected.id} timezone={readerSettings?.display_timezone ?? 'UTC'} /><RelatedArticlesPanel key={`related-${selected.id}`} articleId={selected.id} onOpen={openById} />{detailIndex >= 0 && <nav className="detail-navigation" aria-label="記事の移動"><button type="button" disabled={detailIndex === 0} onClick={() => void openArticle(detailSequence[detailIndex - 1], 'previous')}>前の記事</button><span aria-live="polite">{detailIndex + 1} / {detailSequence.length}</span><button type="button" disabled={detailIndex >= detailSequence.length - 1} onClick={() => void openArticle(detailSequence[detailIndex + 1], 'next')}>次の記事</button></nav>}</>}
         </section>}</DetailPresence>
-        <section>
+        <section id="article-list-pane" className="reader-list-pane" inert={isMobile && (selected !== null || openingId !== null)}>
           <div className="reader-header"><section className="list-heading"><h1>{source ? (source.kind === 'feed' ? feeds.find(f => f.id === source.id)?.title : folders.find(f => f.id === source.id)?.name) || '記事' : filter === 'all' ? '記事' : filter === 'today' ? 'Today' : filter === 'unread' ? '未読' : filter === 'recent' ? '最近読んだ記事' : filter === 'later' ? 'あとで読む' : 'スター付き'}</h1><span className="result-count">{total} 件</span></section>
-          <div className="reader-actions"><label className="integration-muted"><input type="checkbox" checked={!!applied.include_muted} onChange={e => { closeDetail(false); setApplied(current => ({ ...current, include_muted: e.target.checked || undefined })) }} />ミュートした記事も表示</label><label className="layout-control">表示形式<select aria-label="記事の表示形式" value={layout} onChange={e => setLayout(e.target.value as Layout)}><option value="standard">標準</option><option value="line">1行</option><option value="tiles">タイル</option></select></label><button type="button" className="read-all" disabled={bulkBusy || loading || !total} onClick={() => void markAllRead()}>全て既読</button></div></div><details className="advanced-filters"><summary>詳細検索</summary>{filter === 'today' && <p>Today では公開日を本日に限定します。</p>}<form onSubmit={e => void applyAdvanced(e)}><div className="advanced-row"><label>検索対象<select aria-label="検索対象" value={draftScope.scope} onChange={e => setDraftScope({ ...draftScope, scope: e.target.value as AppliedFilters['scope'] })}><option value="both">タイトルと本文</option><option value="title">タイトル</option><option value="body">本文</option></select></label><label>並び順<select aria-label="並び順" value={draftScope.order} onChange={e => setDraftScope({ ...draftScope, order: e.target.value as AppliedFilters['order'] })}><option value="new">新しい順</option><option value="old">古い順</option><option value="recent">最近見た順</option></select></label><label>公開日・開始<input aria-label="公開日・開始" type="date" disabled={filter === 'today'} value={draftScope.published_from} onChange={e => setDraftScope({ ...draftScope, published_from: e.target.value })} /></label><label>公開日・終了<input aria-label="公開日・終了" type="date" disabled={filter === 'today'} value={draftScope.published_to} onChange={e => setDraftScope({ ...draftScope, published_to: e.target.value })} /></label></div><div className="advanced-row"><label>いずれかを含む<input aria-label="いずれかを含む" value={draftScope.any} onChange={e => setDraftScope({ ...draftScope, any: e.target.value })} /></label><label>含まない<input aria-label="含まない" value={draftScope.exclude} onChange={e => setDraftScope({ ...draftScope, exclude: e.target.value })} /></label><details className="feed-picker"><summary>対象フィード</summary><div>{feeds.map(feed => <label key={feed.id}><input type="checkbox" checked={draftScope.feed_ids.split(',').filter(Boolean).includes(String(feed.id))} onChange={e => { const ids = new Set(draftScope.feed_ids.split(',').filter(Boolean)); e.target.checked ? ids.add(String(feed.id)) : ids.delete(String(feed.id)); setDraftScope({ ...draftScope, feed_ids: [...ids].join(',') }) }} />{feed.title || feed.url}</label>)}</div></details><button>条件を適用</button><button type="button" onClick={() => { const order = filter === 'recent' ? 'recent' : 'new'; setDraftScope({ scope: 'both', order, any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }); setApplied({ scope: 'both', order, include_muted: applied.include_muted }) }}>詳細条件をクリア</button></div></form></details>
+          <div className="reader-actions"><button type="button" className="mobile-select-toggle" aria-pressed={mobileSelecting} onClick={() => { setMobileSelecting(value => !value); setSelectedIds([]); setSwipeActionsId(null) }}>{mobileSelecting ? '選択を終了' : '選択'}</button><label className="integration-muted"><input type="checkbox" checked={!!applied.include_muted} onChange={e => { closeDetail(false); setApplied(current => ({ ...current, include_muted: e.target.checked || undefined })) }} />ミュートした記事も表示</label><label className="layout-control">表示形式<select aria-label="記事の表示形式" value={layout} onChange={e => setLayout(e.target.value as Layout)}><option value="standard">標準</option><option value="line">1行</option><option value="tiles">タイル</option></select></label><button type="button" className="read-all" disabled={bulkBusy || loading || !total} onClick={() => void markAllRead()}>全て既読</button></div><details className="advanced-filters"><summary>詳細検索</summary>{filter === 'today' && <p>Today では公開日を本日に限定します。</p>}<form onSubmit={e => void applyAdvanced(e)}><div className="advanced-row"><label>検索対象<select aria-label="検索対象" value={draftScope.scope} onChange={e => setDraftScope({ ...draftScope, scope: e.target.value as AppliedFilters['scope'] })}><option value="both">タイトルと本文</option><option value="title">タイトル</option><option value="body">本文</option></select></label><label>並び順<select aria-label="並び順" value={draftScope.order} onChange={e => setDraftScope({ ...draftScope, order: e.target.value as AppliedFilters['order'] })}><option value="new">新しい順</option><option value="old">古い順</option><option value="recent">最近見た順</option></select></label><label>公開日・開始<input aria-label="公開日・開始" type="date" disabled={filter === 'today'} value={draftScope.published_from} onChange={e => setDraftScope({ ...draftScope, published_from: e.target.value })} /></label><label>公開日・終了<input aria-label="公開日・終了" type="date" disabled={filter === 'today'} value={draftScope.published_to} onChange={e => setDraftScope({ ...draftScope, published_to: e.target.value })} /></label></div><div className="advanced-row"><label>いずれかを含む<input aria-label="いずれかを含む" value={draftScope.any} onChange={e => setDraftScope({ ...draftScope, any: e.target.value })} /></label><label>含まない<input aria-label="含まない" value={draftScope.exclude} onChange={e => setDraftScope({ ...draftScope, exclude: e.target.value })} /></label><details className="feed-picker"><summary>対象フィード</summary><div>{feeds.map(feed => <label key={feed.id}><input type="checkbox" checked={draftScope.feed_ids.split(',').filter(Boolean).includes(String(feed.id))} onChange={e => { const ids = new Set(draftScope.feed_ids.split(',').filter(Boolean)); e.target.checked ? ids.add(String(feed.id)) : ids.delete(String(feed.id)); setDraftScope({ ...draftScope, feed_ids: [...ids].join(',') }) }} />{feed.title || feed.url}</label>)}</div></details><button>条件を適用</button><button type="button" onClick={() => { const order = filter === 'recent' ? 'recent' : 'new'; setDraftScope({ scope: 'both', order, any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }); setApplied({ scope: 'both', order, include_muted: applied.include_muted }) }}>詳細条件をクリア</button></div></form></details></div>
           {notice && <div className="success-message" role="status">{notice}</div>}
           {selectedIds.length > 0 && <ArticleBulkActions count={selectedIds.length} busy={bulkBusy} onApply={async state => { if (!(await bulkState(state))) throw new Error('一括操作を完了できませんでした') }} onClear={() => setSelectedIds([])} onExport={() => {
             const chosen = items.filter(article => selectedIds.includes(article.id))
@@ -541,11 +582,23 @@ function App() {
             setNotice(`${links.length} 件のリンクを書き出しました${skipped ? `（${skipped} 件はURLが無効か一覧にないため除外）` : ''}`)
           }} />}
           {error && <div className="error-message" role="alert">{error}<button onClick={() => void (readerSettings ? loadFirst() : loadReaderSettings())}>再試行</button></div>}
-          <div className={`article-list layout-${layout}`} data-layout={layout} aria-label="記事一覧" aria-busy={loading}>
-            {loading ? <div className="empty-state"><span className="spinner" />記事を読み込んでいます...</div> : items.length === 0 ? <div className="empty-state"><span className="empty-icon"><Inbox className="ui-icon" aria-hidden="true" /></span><strong>{error ? '読み込みに失敗しました' : '記事がありません'}</strong><span>{error ? '接続を確認して、再試行してください。' : '条件に合う記事が見つかりませんでした。'}</span></div> : items.map(article => <article key={article.id} className={`article-card ${article.is_read ? 'read' : ''}`}>
-              <input className="article-select" disabled={bulkBusy} aria-label={`記事を選択: ${article.title}`} type="checkbox" checked={selectedIds.includes(article.id)} onChange={e => setSelectedIds(current => e.target.checked ? current.length < 100 ? [...current, article.id] : current : current.filter(id => id !== article.id))} />
-              <button className="article-open" data-article-id={article.id} onClick={() => void openArticle(article)} onAuxClick={e => { if (e.button !== 1) return; e.preventDefault(); const url = originalUrl(article.url); if (url) { window.open(url, '_blank', 'noopener,noreferrer'); void markOriginalRead(article) } }}><span className="unread-mark" aria-hidden="true" /><ArticleRowContent article={article} timezone={readerSettings?.display_timezone ?? 'UTC'} /></button>
+          <div className={`article-list layout-${layout}${selectedIds.length || mobileSelecting ? ' bulk-selecting' : ''}`} data-layout={layout} aria-label="記事一覧" aria-busy={loading}>
+            {loading ? <div className="empty-state"><span className="spinner" />記事を読み込んでいます...</div> : items.length === 0 ? <div className="empty-state"><span className="empty-icon"><Inbox className="ui-icon" aria-hidden="true" /></span><strong>{error ? '読み込みに失敗しました' : '記事がありません'}</strong><span>{error ? '接続を確認して、再試行してください。' : '条件に合う記事が見つかりませんでした。'}</span></div> : items.map(article => <article key={article.id} className={`article-card ${article.is_read ? 'read' : ''}${selected?.id === article.id ? ' is-current' : ''}${swipeActionsId === article.id ? ' swipe-actions-open' : ''}`} onTouchStart={event => {
+              if (!isMobile || mobileSelecting || event.touches.length !== 1 || event.touches[0].clientX <= 24 || (event.target instanceof Element && event.target.closest('input, .mobile-swipe-actions'))) { articleTouch.current = null; return }
+              articleTouch.current = { id: article.id, x: event.touches[0].clientX, y: event.touches[0].clientY }
+            }} onTouchEnd={event => {
+              const start = articleTouch.current; articleTouch.current = null
+              if (!start || start.id !== article.id || event.changedTouches.length !== 1) return
+              const touch = event.changedTouches[0], dx = touch.clientX - start.x, dy = touch.clientY - start.y
+              if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+              suppressArticleClick.current = true; window.setTimeout(() => { suppressArticleClick.current = false }, 500)
+              if (dx < 0) { setSwipeActionsId(null); void updateState(article, { read: !article.is_read }) }
+              else setSwipeActionsId(article.id)
+            }} onTouchCancel={() => { articleTouch.current = null }}>
+              <label className="article-select-wrap"><input className="article-select" disabled={bulkBusy} aria-label={`記事を選択: ${article.title}`} type="checkbox" checked={selectedIds.includes(article.id)} onChange={e => setSelectedIds(current => e.target.checked ? current.length < 100 ? [...current, article.id] : current : current.filter(id => id !== article.id))} /></label>
+              <button className="article-open" data-article-id={article.id} onClick={() => { if (suppressArticleClick.current) { suppressArticleClick.current = false; return }; if (mobileSelecting && isMobile) { setSelectedIds(current => current.includes(article.id) ? current.filter(id => id !== article.id) : current.length < 100 ? [...current, article.id] : current); return }; void openArticle(article) }} onAuxClick={e => { if (e.button !== 1) return; e.preventDefault(); const url = originalUrl(article.url); if (url) { window.open(url, '_blank', 'noopener,noreferrer'); void markOriginalRead(article) } }}><span className="unread-mark" aria-hidden="true" /><ArticleRowContent article={article} timezone={readerSettings?.display_timezone ?? 'UTC'} /></button>
               <ReadLaterButton compact id={article.id} saved={!!article.is_saved_for_later} onChanged={saved => updateLater(article.id, saved)} /><button className={`icon-button card-star ${article.is_starred ? 'is-starred' : ''}`} aria-label={article.is_starred ? 'スターを解除' : 'スターを付ける'} aria-pressed={article.is_starred} onClick={() => void updateState(article, { starred: !article.is_starred })}><Star className="ui-icon" aria-hidden="true" fill={article.is_starred ? 'currentColor' : 'none'} /></button>
+              {isMobile && swipeActionsId === article.id && <div className="mobile-swipe-actions" aria-label="記事の操作"><ReadLaterButton id={article.id} saved={!!article.is_saved_for_later} onChanged={saved => { updateLater(article.id, saved); setSwipeActionsId(null) }} /><button type="button" aria-pressed={article.is_starred} onClick={() => { void updateState(article, { starred: !article.is_starred }); setSwipeActionsId(null) }}>{article.is_starred ? 'スターを解除' : 'スターを付ける'}</button><button type="button" onClick={() => setSwipeActionsId(null)}>閉じる</button></div>}
             </article>)}
             <div ref={sentinel} className="load-sentinel" aria-hidden="true" />
             {moreLoading && <div className="more-loading"><span className="spinner" />さらに読み込み中...</div>}

@@ -17,6 +17,7 @@ type Props = {
 }
 export default function LibrarySidebar(p: Props) {
   const [menu, setMenu] = useState<number | null>(null)
+  const [reordering, setReordering] = useState(false)
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [message, setMessage] = useState('')
@@ -111,11 +112,11 @@ export default function LibrarySidebar(p: Props) {
   }
   return <>
     <p id="order-help" className="sr-only">順序ハンドルをドラッグ、または上下矢印・Home・Endで並べ替えます。フィードはフォルダーの上へドラッグするか操作メニューから移動できます。</p>
-    <div className="side-heading source-heading">フォルダー</div><nav className="source-list" aria-label="フォルダーとフィード">{p.folders.map(folder => {
+    <div className="library-order-heading"><span className="side-heading source-heading">フォルダー</span><button type="button" className="mobile-reorder-toggle" aria-pressed={reordering} onClick={() => setReordering(value => !value)}>{reordering ? '並べ替えを終了' : '並べ替え'}</button></div><nav className={`source-list${reordering ? ' is-reordering' : ''}`} aria-label="フォルダーとフィード">{p.folders.map(folder => {
       const isCollapsed = p.collapsed.includes(folder.id)
       return <div className="folder-group" key={folder.id}><div className="folder-row" data-order-target="folder" data-order-id={folder.id} data-drop={marker('folder',folder.id)} onContextMenu={e => { e.preventDefault(); p.onEditFolder(folder) }}>
-        {handle({kind:'folder',id:folder.id},folder.name)}<button className="folder-toggle" aria-expanded={!isCollapsed} aria-label={`${folder.name}を${isCollapsed ? '展開' : '折りたたむ'}`} onClick={() => p.onToggle(folder.id)}>{isCollapsed ? <ChevronRight className="ui-icon" aria-hidden="true" /> : <ChevronDown className="ui-icon" aria-hidden="true" />}</button><button className={`source-button ${p.source?.kind === 'folder' && p.source.id === folder.id ? 'active' : ''}`} onClick={() => p.onSelect({kind:'folder',id:folder.id})}><FolderIcon className="ui-icon" aria-hidden="true" /><span title={folder.name}>{folder.name}</span>{p.folderUnread[folder.id] !== undefined && <span className="count unread-count" aria-label={`未読 ${p.folderUnread[folder.id]} 件`}>{p.folderUnread[folder.id]}</span>}</button><button className="mini-menu" aria-label={`${folder.name}を編集`} onClick={() => p.onEditFolder(folder)}><MoreHorizontal className="ui-icon" aria-hidden="true" /></button></div>{!isCollapsed && p.feeds.filter(f => f.folder_id === folder.id).map(feedRow)}</div>
-    })}</nav><div className="side-heading source-heading unfiled-target" data-order-target="folder" data-order-id="0" data-drop={marker('folder',0)}>フィード（フォルダーなし）</div><nav className="source-list" aria-label="フォルダーなしのフィード">{p.feeds.filter(f => f.folder_id === null).map(feedRow)}</nav>
+        {handle({kind:'folder',id:folder.id},folder.name)}<button className="folder-toggle" aria-expanded={!isCollapsed} aria-label={`${folder.name}を${isCollapsed ? '展開' : '折りたたむ'}`} onClick={() => p.onToggle(folder.id)}>{isCollapsed ? <ChevronRight className="ui-icon" aria-hidden="true" /> : <ChevronDown className="ui-icon" aria-hidden="true" />}</button><button className={`source-button ${p.source?.kind === 'folder' && p.source.id === folder.id ? 'active' : ''}`} onClick={() => p.onSelect({kind:'folder',id:folder.id})}><FolderIcon className="ui-icon" aria-hidden="true" /><span title={folder.name}>{folder.name}</span>{p.folderUnread[folder.id] !== undefined && <span className={`count unread-count${p.folderUnread[folder.id] === 0 ? ' is-zero' : ''}`} aria-label={`未読 ${p.folderUnread[folder.id]} 件`}>{p.folderUnread[folder.id]}</span>}</button><button className="mini-menu" aria-label={`${folder.name}を編集`} onClick={() => p.onEditFolder(folder)}><MoreHorizontal className="ui-icon" aria-hidden="true" /></button></div>{!isCollapsed && p.feeds.filter(f => f.folder_id === folder.id).map(feedRow)}</div>
+    })}</nav><div className="side-heading source-heading unfiled-target" data-order-target="folder" data-order-id="0" data-drop={marker('folder',0)}>フィード（フォルダーなし）</div><nav className={`source-list${reordering ? ' is-reordering' : ''}`} aria-label="フォルダーなしのフィード">{p.feeds.filter(f => f.folder_id === null).map(feedRow)}</nav>
     <div className="sidebar-status" role="status" aria-live="polite">{saving ? '順序を保存しています…' : message}</div>
   </>
 }

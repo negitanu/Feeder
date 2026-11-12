@@ -1,0 +1,42 @@
+/* Mobile triage, building on the existing Feeder reader and unslop craft pass. */
+.article-select-wrap { display: contents; }
+.mobile-select-toggle, .mobile-reorder-toggle, .mobile-detail-actions, .mobile-swipe-actions { display: none; }
+.library-order-heading > .side-heading { display: block; }
+@media (max-width: 767px) {
+  .mobile-menu-button { width: 44px; height: 44px; }
+  .mobile-select-toggle { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+  .reader-actions { flex-wrap: wrap; }
+  .mobile-reorder-toggle { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px; }
+  .library-order-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+  .library-order-heading > .side-heading { display: block; padding: 0 8px; }
+  .source-list:not(.is-reordering) .order-handle { display: none; }
+  .sidebar .unread-count.is-zero { display: none; }
+  .source-list:not(.is-reordering) .feed-source { margin-left: 24px; }
+  .article-list .article-card { flex-wrap: wrap; touch-action: pan-y; }
+  .article-list .article-select-wrap { display: none; }
+  .article-list.bulk-selecting .article-select-wrap { display: flex; flex: none; width: 44px; height: 44px; align-items: center; justify-content: center; }
+  .article-list.bulk-selecting .article-select { display: block; width: 20px; height: 20px; margin: 0; }
+  .article-list .article-card > .read-later-button-wrap, .article-list .article-card > .card-star { display: none; }
+  .article-list:not(.layout-tiles) .article-open { flex: 1; width: auto; min-width: 0; align-items: flex-start; padding: 12px 0; gap: 8px; }
+  .article-list:not(.layout-tiles) .unread-mark { width: 4px; height: 4px; margin-top: 7px; }
+  .article-list:not(.layout-tiles) .card-copy.article-row-content { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 4px 8px; align-items: baseline; }
+  .article-list:not(.layout-tiles) .article-row-content > .source { grid-column: 1; grid-row: 1; max-width: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 16px; }
+  .article-list:not(.layout-tiles) .article-row-content > .card-meta { grid-column: 2; grid-row: 1; max-width: none; font: 12px/16px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+  .article-list:not(.layout-tiles) .article-row-content > strong { display: -webkit-box; grid-column: 1 / -1; grid-row: 2; overflow: hidden; white-space: normal; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: 14px; line-height: 20px; }
+  .article-list:not(.layout-tiles) .article-row-content > .excerpt { display: none; }
+  .article-list.layout-tiles .article-card { display: flex; }
+  .article-list.layout-tiles .article-open { width: 100%; }
+  .article-list.layout-tiles.bulk-selecting .article-open { width: auto; }
+  .mobile-swipe-actions { display: flex; flex: 1 0 100%; gap: 8px; padding: 0 0 8px; }
+  .mobile-swipe-actions button { min-height: 44px; }
+  .detail-presence.is-leaving { display: none; }
+  .mobile-detail-open .topbar { visibility: hidden; }
+  .mobile-detail-open .article-detail { position: fixed; z-index: 15; inset: 0 !important; width: 100%; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: max(16px, env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom)); overflow-y: auto; border: 0; border-radius: 0; box-shadow: none; background: var(--surface); }
+  .mobile-detail-open .detail-presence > .article-detail { animation: none; }
+  .mobile-detail-open .detail-toolbar, .mobile-detail-open .detail-keyboard-help, .mobile-detail-open .detail-navigation { display: none; }
+  .mobile-detail-actions { position: fixed; z-index: 1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch; gap: 0; inset: auto 0 0; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
+  .mobile-detail-actions > button, .mobile-detail-actions > .read-later-button-wrap, .mobile-detail-actions .read-later-button { min-width: 0; width: 100%; min-height: 52px; }
+  .mobile-detail-actions > button, .mobile-detail-actions .read-later-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 0; border: 0; border-radius: 4px; background: transparent; color: var(--text); font-size: 11px; line-height: 16px; }
+  .mobile-detail-actions .read-later-button[aria-pressed="true"], .mobile-detail-actions button[aria-pressed="true"] { color: var(--accent); }
+  .mobile-detail-actions .read-later-error { position: absolute; bottom: 100%; right: 0; padding: 8px; background: var(--surface); }
+}

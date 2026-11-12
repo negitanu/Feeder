@@ -13,3 +13,5 @@ createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></R
 
 import './mobile-reader.css'
 import './reader-density.css'
+import './desktop-reader.css'
+import './mobile-triage.css'

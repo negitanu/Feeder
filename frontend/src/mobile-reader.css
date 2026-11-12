@@ -1,4 +1,4 @@
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .layout-line .article-card { min-width: 0; padding: 0 4px; }
   .layout-line .article-open { min-width: 0; align-items: center; padding: 8px 0; gap: 4px; }
   .layout-line .card-copy.article-row-content { grid-template-columns: minmax(36px, 64px) minmax(0, 1fr) minmax(64px, 110px); align-items: center; gap: 4px; }
@@ -20,7 +20,7 @@
 @media (max-width: 340px) { .layout-tiles { grid-template-columns: minmax(0, 1fr); } }
 
 .mobile-menu-button { display: none; }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .mobile-menu-button { display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
   .mobile-menu-button svg { width: 22px; height: 22px; }
   .mobile-sidebar-backdrop { position: fixed; inset: 0; z-index: 19; border: 0; background: #0009; }
@@ -33,7 +33,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .workspace .sidebar { transition: none; } }
 .mobile-sidebar-heading { display: none; }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .mobile-sidebar-heading { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin-bottom: 8px; padding-left: 8px; color: var(--secondary); font-size: 13px; font-weight: 500; }
   .mobile-sidebar-heading button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
   .mobile-sidebar-heading button:hover { background: var(--surface-soft); }
@@ -43,7 +43,7 @@
 }
 
 /* Editing dialogs must remain above the mobile drawer and its backdrop. */
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .modal-backdrop { z-index: 30; }
 }
 

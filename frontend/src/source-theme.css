@@ -33,5 +33,5 @@
 .skip-navigation:focus{top:10px}
 #page-content{scroll-margin-top:100px}#page-content:focus{outline:none}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-@media(max-width:760px){.topbar{padding:8px 12px;gap:8px}.brand{min-width:0;font-size:16px}.global-nav{flex:1;justify-content:flex-end}.global-nav button{padding:8px 12px;font-size:13px}.search{order:3;flex-basis:100%;max-width:none}.theme-control{margin-left:0}.main-area{padding:18px 12px 40px}.sidebar{padding:12px}.filter{min-height:40px}.article-open{padding:12px 0}.card-copy strong{font-size:14px}.article-card{padding:0 6px}}
+@media(max-width:767px){.topbar{padding:8px 12px;gap:8px}.brand{min-width:0;font-size:16px}.global-nav{flex:1;justify-content:flex-end}.global-nav button{padding:8px 12px;font-size:13px}.search{order:3;flex-basis:100%;max-width:none}.theme-control{margin-left:0}.main-area{padding:18px 12px 40px}.sidebar{padding:12px}.filter{min-height:40px}.article-open{padding:12px 0}.card-copy strong{font-size:14px}.article-card{padding:0 6px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

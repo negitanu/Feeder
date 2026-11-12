@@ -30,7 +30,7 @@
 .article-date-compact {
   display: none;
 }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .article-date-full { display: none; }
   .article-date-compact { display: inline; }
   .layout-line .card-copy.article-row-content {
@@ -64,7 +64,7 @@
 .layout-standard .article-row-content > .card-meta { grid-column: 2; grid-row: 1; text-align: right; }
 .layout-standard .article-row-content > strong { grid-column: 1 / -1; grid-row: 2; line-height: 20px; }
 .layout-standard .article-row-content > .excerpt { grid-column: 1 / -1; grid-row: 3; line-height: 20px; }
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .main-area { padding-top: 16px; }
   .list-heading { margin-bottom: 8px; }
   .list-heading h1 { font-size: 20px; line-height: 28px; }
@@ -75,10 +75,10 @@
 .reader-header { display:flex; align-items:center; gap:16px; margin-bottom:8px; }
 .reader-header .list-heading { display:flex; flex:none; align-items:baseline; gap:12px; margin:0; }
 .reader-header .reader-actions { flex:1; margin:0; min-width:0; }
-@media (max-width:760px) { .reader-header { flex-wrap:wrap; gap:8px; } .reader-header .reader-actions { flex:1 1 100%; } }
+@media (max-width:767px) { .reader-header { flex-wrap:wrap; gap:8px; } .reader-header .reader-actions { flex:1 1 100%; } }
 
 /* The document remains the reading scroll area; the library scrolls independently. */
-@media (min-width: 761px) {
+@media (min-width: 768px) {
   .workspace > .sidebar {
     position: sticky;
     top: 72px;
