@@ -1,5 +1,6 @@
 /* Adapted from FeedAstrolabe tokens.css, reader.css and navigation.css. */
-:root{color-scheme:light;--bg:#f7f7f6;--surface:#fff;--text:#262827;--muted:#555b59;--line:#d4d8d6;--accent:#496975;--accent-soft:#e8eff0;--surface-soft:#eeeeec;--on-accent:#fff;--shadow:0 4px 18px #26282708}
+:root{color-scheme:light dark;--bg:#f7f7f6;--surface:#fff;--text:#262827;--muted:#555b59;--line:#d4d8d6;--accent:#496975;--accent-soft:#e8eff0;--surface-soft:#eeeeec;--on-accent:#fff;--shadow:0 4px 18px #26282708}
+:root[data-theme=light]{color-scheme:light}
 :root[data-theme=dark]{--bg:#171918;--surface:#222523;--text:#eef0ee;--muted:#b7bfbb;--line:#4b524e;--accent:#a9c8d0;--accent-soft:#293b3e;--surface-soft:#303531;--on-accent:#122326;--shadow:0 4px 18px #0003}
 @media(prefers-color-scheme:dark){:root[data-theme=system]{--bg:#171918;--surface:#222523;--text:#eef0ee;--muted:#b7bfbb;--line:#4b524e;--accent:#a9c8d0;--accent-soft:#293b3e;--surface-soft:#303531;--on-accent:#122326;--shadow:0 4px 18px #0003}}
 .topbar{padding:10px 28px;gap:20px;min-height:64px;height:auto;flex-wrap:wrap}
