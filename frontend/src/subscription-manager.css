@@ -14,3 +14,13 @@
 .subscription-health-detail dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:8px;margin:8px 0}.subscription-health-detail dt{color:var(--muted)}.subscription-health-detail dd{margin:0;overflow-wrap:anywhere}
 .subscription-manager button:disabled{opacity:.5;cursor:default}
 @media(pointer:coarse){.subscription-manager button,.subscription-manager fieldset label,.subscription-row-heading label,.subscription-row summary{min-height:48px}.subscription-row summary{padding-block:14px;box-sizing:border-box}.subscription-manager input[type=search]{font-size:16px}}
+.subscription-table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.subscription-table{width:100%;min-width:760px;border-collapse:collapse;text-align:left}
+.subscription-table th,.subscription-table td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.subscription-table thead th{color:var(--muted);font-weight:500}
+.subscription-table .subscription-group th{background:var(--surface, transparent);font-weight:600}
+.subscription-group span{margin-left:8px;color:var(--muted);font-weight:400}
+.subscription-table .subscription-row td:first-child{width:38%;overflow-wrap:anywhere}
+.subscription-table .subscription-row p{margin:0 0 4px}
+.subscription-row-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.subscription-table tbody:last-child tr:last-child td{border-bottom:0}
