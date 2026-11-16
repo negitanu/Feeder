@@ -1,0 +1,86 @@
+/* Settings shares the reader's quiet surfaces, compact controls and selection states. */
+.settings-view {
+  --settings-section-gap: 24px;
+  --settings-control-radius: var(--radius-control, 8px);
+}
+
+.settings-view .settings-heading h1 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+}
+
+/* Section separators give settings a scannable structure without nested cards. */
+.settings-view .collection-section,
+.settings-view .readability-panel {
+  margin: var(--settings-section-gap) 0;
+  padding: var(--settings-section-gap) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.settings-view .collection-section h2,
+.settings-view .readability-panel h2,
+.settings-view .collection-page > h2 {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 500;
+}
+.settings-view .collection-section > p,
+.settings-view .readability-panel > p {
+  color: var(--secondary);
+  line-height: 1.7;
+}
+
+/* Use the same restrained highlight as the reader's library navigation. */
+.settings-view .settings-categories { gap: 4px; }
+.settings-view .settings-categories button {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: var(--settings-control-radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+}
+.settings-view .settings-categories button:hover { background: var(--surface-soft); }
+.settings-view .settings-categories button[aria-current=page] {
+  border-color: var(--line);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 3px 0 var(--accent);
+}
+.settings-view .settings-section-links { gap: 4px; }
+.settings-view .settings-section-links button {
+  min-height: 36px;
+  border-radius: var(--settings-control-radius);
+  color: var(--secondary);
+  text-decoration: none;
+}
+.settings-view .settings-section-links button:hover { background: var(--surface-soft); color: var(--text); }
+
+.settings-view :is(button, input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  border-radius: var(--settings-control-radius);
+}
+.settings-view :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.settings-view button:disabled { opacity: .55; cursor: default; }
+.settings-view .collection-card { border-radius: var(--settings-control-radius); }
+.settings-view .error-message { line-height: 1.5; }
+
+@media (max-width: 767px) {
+  .settings-view { --settings-section-gap: 20px; }
+  .settings-view .settings-categories button,
+  .settings-view .settings-section-links button,
+  .settings-view button,
+  .settings-view select,
+  .settings-view input:not([type=checkbox]):not([type=radio]):not([type=range]) { min-height: 48px; }
+  .settings-view :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) { font-size: max(16px, 1em); }
+}
+@media (forced-colors: active) {
+  .settings-view .settings-categories button[aria-current=page] { border-color: Highlight; outline: 1px solid Highlight; }
+}

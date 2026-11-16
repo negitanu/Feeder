@@ -35,6 +35,8 @@ try {
     await page.route('**/api/articles/*/hero', route => route.fulfill({ status: 404, body: '' }))
     await page.goto(origin)
     await page.waitForFunction(() => document.querySelectorAll('.article-card').length === 24 && document.querySelector('.article-list')?.getAttribute('aria-busy') === 'false')
+    if (width < 768) await page.getByRole('button', { name: '選択', exact: true }).click()
+    else await page.locator('.article-card').first().hover()
     await page.locator('.article-select').first().check()
     let requests = 0
     await page.route('**/api/articles?*', async route => {
@@ -60,6 +62,7 @@ try {
   const page = await context.newPage()
   await page.goto(origin)
   await page.waitForFunction(() => document.querySelectorAll('.article-card').length === 24)
+  await page.locator('.article-card').first().hover()
   await page.locator('.article-select').first().check()
   await page.route('**/api/articles?*', route => new URL(route.request().url()).searchParams.has('cursor') ? route.fulfill({ status: 409, body: 'conflict' }) : route.continue())
   await page.getByRole('button', { name: 'さらに読み込む' }).click()

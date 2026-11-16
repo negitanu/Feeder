@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('../frontend/package.json', import.meta.url));
 const { chromium } = require('@playwright/test');
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.FEEDER_CHROMIUM_PATH ? { executablePath: process.env.FEEDER_CHROMIUM_PATH } : {}) });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.addInitScript(() => { window.__originalOpens = []; window.open = (...args) => { window.__originalOpens.push(args); return null } });
@@ -36,7 +36,7 @@ try {
   await detail.getByRole('button', { name: 'スターを解除', exact: true }).waitFor();
   await detail.getByRole('button', { name: '未読にする', exact: true }).click();
   await detail.getByRole('button', { name: '既読にする', exact: true }).click();
-  await page.getByRole('button', { name: /一覧に戻る/ }).click();
+  await page.getByRole('button', { name: '記事を閉じる', exact: true }).click();
   await page.locator('.article-card.read').first().waitFor();
   await page.locator('.load-sentinel').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelectorAll('.article-card').length === 36);

@@ -15,3 +15,5 @@ import './mobile-reader.css'
 import './reader-density.css'
 import './desktop-reader.css'
 import './mobile-triage.css'
+
+import "./settings-unified.css"

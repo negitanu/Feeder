@@ -1,1 +1,16 @@
-.subscription-manager{font-size:13px;color:var(--text)}.subscription-manager>label{display:grid;gap:8px}.subscription-manager input[type=search]{width:100%;min-width:0;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}.subscription-manager button{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer}.subscription-manager button:hover{background:var(--accent-soft)}.subscription-manager button:disabled{opacity:.5;cursor:default}.subscription-manager p{color:var(--muted);overflow-wrap:anywhere}.subscription-manager li>div{line-height:1.8}.subscription-manager li{border-color:var(--line)!important}.subscription-manager li>div:first-child strong{min-width:0;overflow-wrap:anywhere}
+.subscription-manager{font-size:13px;color:var(--text);min-width:0}
+.subscription-manager search>label{display:grid;gap:8px}
+.subscription-manager input[type=search]{width:100%;min-width:0}
+.subscription-manager fieldset{display:flex;flex-wrap:wrap;gap:4px 16px;margin:12px 0;padding:0;border:0}
+.subscription-manager legend{margin-bottom:6px;color:var(--muted)}
+.subscription-manager fieldset label{display:inline-flex;align-items:center;gap:4px;min-height:36px}
+.subscription-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
+.subscription-manager p{color:var(--muted);overflow-wrap:anywhere}
+.subscription-list{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.subscription-manager .subscription-row{min-width:0;padding:12px 16px;border:1px solid var(--line);border-radius:8px;overflow-wrap:anywhere}
+.subscription-row-heading{display:flex;gap:8px;align-items:baseline}.subscription-row-heading label{display:inline-flex;align-items:center;gap:8px;min-width:0;cursor:pointer}.subscription-row-heading strong{min-width:0;overflow-wrap:anywhere}
+.subscription-url{color:var(--muted);overflow-wrap:anywhere}.subscription-row p{margin:6px 0}
+.subscription-row summary{cursor:pointer;padding:8px 0;color:var(--accent)}
+.subscription-health-detail dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:8px;margin:8px 0}.subscription-health-detail dt{color:var(--muted)}.subscription-health-detail dd{margin:0;overflow-wrap:anywhere}
+.subscription-manager button:disabled{opacity:.5;cursor:default}
+@media(pointer:coarse){.subscription-manager button,.subscription-manager fieldset label,.subscription-row-heading label,.subscription-row summary{min-height:48px}.subscription-row summary{padding-block:14px;box-sizing:border-box}.subscription-manager input[type=search]{font-size:16px}}

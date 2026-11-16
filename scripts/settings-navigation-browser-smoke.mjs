@@ -13,7 +13,7 @@ try {
   const page = await browser.newPage({viewport:{width,height:850}})
   await page.route('**/api/**', route => {
    const path = new URL(route.request().url()).pathname
-   const fixtures = {'/api/session':{csrf_token:'a'.repeat(64)}, '/api/library':{feeds:[],folders:[]}, '/api/reader/settings':{display_timezone:'UTC',default_view:'all'}, '/api/articles':{items:[{id:1,title:'Synthetic article',content:'Body',url:'https://example.test/article',published:'2026-01-01T00:00:00Z',is_read:false,is_starred:false,is_saved_for_later:false}],total:1,has_more:false,next_cursor:null}, '/api/library/unread':{count:0,folders:[]}, '/api/collection/settings':{enabled:false,interval_seconds:3600}, '/api/collection/health':{feeds:[],global_enabled:false,global_interval_seconds:3600}, '/api/read-later/settings':{auto_remove:false}, '/api/keys':{keys:[]}, '/api/keys/settings':{rate_limit:60}, '/api/mute-rules':{rules:[]}, '/api/social/sources':{sources:[]}}
+   const fixtures = {'/api/discover':{candidates:[]}, '/api/session':{csrf_token:'a'.repeat(64)}, '/api/library':{feeds:[],folders:[]}, '/api/reader/settings':{display_timezone:'UTC',default_view:'all'}, '/api/articles':{items:[{id:1,title:'Synthetic article',content:'Body',url:'https://example.test/article',published:'2026-01-01T00:00:00Z',is_read:false,is_starred:false,is_saved_for_later:false}],total:1,has_more:false,next_cursor:null}, '/api/library/unread':{count:0,folders:[]}, '/api/collection/settings':{enabled:false,interval_seconds:3600}, '/api/collection/health':{feeds:[],global_enabled:false,global_interval_seconds:3600}, '/api/read-later/settings':{auto_remove:false}, '/api/keys':{keys:[]}, '/api/keys/settings':{rate_limit:60}, '/api/mute-rules':{rules:[]}, '/api/social/sources':{sources:[]}}
    return route.fulfill({json:fixtures[path] ?? {}})
   })
   const origin=server.resolvedUrls.local[0]
@@ -27,12 +27,12 @@ try {
   await page.getByRole('button',{name:'連携・ミュート'}).click()
   assert.equal(new URL(page.url()).hash,'#settings-category-integration')
   await page.goBack(); await page.getByRole('heading',{name:'表示設定',exact:true}).waitFor()
-  await page.goBack(); await page.getByRole('heading',{name:'購読管理',exact:true}).waitFor()
+  await page.goBack(); await page.getByRole('heading',{name:'購読管理・収集状態',exact:true}).waitFor()
   assert.equal(await page.getByLabel('サイトまたはフィード URL').inputValue(), 'https://example.test/draft')
   await page.goBack(); await page.getByRole('heading',{name:'設定',exact:true}).waitFor({state:'hidden'})
   await page.waitForFunction(() => document.querySelector('.article-select')?.checked === true)
   assert.equal(await page.getByLabel('記事を選択: Synthetic article').isChecked(), true)
-  await page.goForward(); await page.getByRole('heading',{name:'購読管理',exact:true}).waitFor()
+  await page.goForward(); await page.getByRole('heading',{name:'購読管理・収集状態',exact:true}).waitFor()
   await page.goForward(); await page.getByRole('heading',{name:'表示設定',exact:true}).waitFor()
   await page.goto(origin+'#settings-category-integration'); await page.getByRole('heading',{name:'APIキー',exact:true}).waitFor()
   await page.reload(); await page.getByRole('heading',{name:'APIキー',exact:true}).waitFor()
