@@ -10,6 +10,12 @@
   font-weight: 500;
 }
 
+/* Give settings room to use the available workspace; individual controls can remain compact. */
+.settings-view { max-width: 1600px; }
+.settings-view .settings-heading,
+.settings-view .collection-page { max-width: none; }
+.settings-view .settings-category { min-width: 0; }
+
 /* Section separators give settings a scannable structure without nested cards. */
 .settings-view .collection-section,
 .settings-view .readability-panel {

@@ -45,8 +45,8 @@
   .article-card.is-current { background: var(--surface-soft); box-shadow: inset 3px 0 var(--accent); }
   .workspace-settings { display: block; }
   .workspace-settings > .sidebar, .workspace-settings > .sidebar-separator { display: none; }
-  .settings-view { display: grid; grid-template-columns: 200px minmax(0, 720px); column-gap: 32px; align-items: start; padding: 24px; }
-  .settings-view > * { grid-column: 2; max-width: 720px; min-width: 0; }
+  .settings-view { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 32px; align-items: start; padding: 24px; }
+  .settings-view > * { grid-column: 2; min-width: 0; }
   .settings-view > .settings-jumps { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 88px; display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0 16px 0 0; border: 0; border-right: 1px solid var(--line); }
   .settings-nav-group { display: flex; flex-direction: column; margin-bottom: 20px; }
   .settings-nav-group > span { display: block; padding: 4px 8px; color: var(--secondary); font-size: 12px; font-weight: 600; }
