@@ -8,12 +8,12 @@ const react = (await import(fileURLToPath(new URL('../frontend/node_modules/@vit
 const root = fileURLToPath(new URL('../frontend', import.meta.url))
 const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import Manager from '/src/SubscriptionManager.tsx';
 const feeds=Array.from({length:101},(_,i)=>({id:i+1,title:'Feed '+(i+1),url:'https://example.test/'+(i+1),folder_id:1,paused:i===1,poll_interval:null,last_checked:i===0?'2026-01-01 12:00:00':null,last_error:i===0?'synthetic error':null}));
-createRoot(document.getElementById('root')).render(React.createElement(Manager,{feeds,folders:[{id:1,name:'Research'}],onChanged:()=>{window.changed=(window.changed||0)+1},onEdit:f=>{window.edited=f.id}}));`
+function App(){const [targetId,setTargetId]=React.useState(null); window.selectFeed=setTargetId; return React.createElement(Manager,{feeds,folders:[{id:1,name:'Research'}],targetId,onClearTarget:()=>setTargetId(null),onChanged:()=>{window.changed=(window.changed||0)+1},onEdit:f=>{window.edited=f.id}})}; createRoot(document.getElementById('root')).render(React.createElement(App));`
 const server = await createServer({ root, configFile: false, server: { port: 0 }, plugins: [react({ fastRefresh: false }), { name:'smoke', resolveId(id) { if (id === 'virtual:smoke') return '\0virtual:smoke' }, load(id) { if (id === '\0virtual:smoke') return entry }, configureServer(s) { s.middlewares.use((req,res,next)=> { if(req.url==='/smoke.html'){res.setHeader('Content-Type','text/html');res.end('<div id="root"></div><script type="module">import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$=()=>{}; window.$RefreshSig$=()=>type=>type; window.__vite_plugin_react_preamble_installed__=true;</script><script type="module" src="/@id/virtual:smoke"></script>')} else next() }) } }] })
 await server.listen()
 let browser
 try {
-  browser = await chromium.launch({headless:true})
+  browser = await chromium.launch({headless:true,...(process.env.FEEDER_CHROMIUM_PATH ? {executablePath:process.env.FEEDER_CHROMIUM_PATH} : {})})
   const page = await browser.newPage({viewport:{width:390,height:844}})
   const errors=[]; page.on('pageerror', e=>errors.push(e.message))
   const calls=[]
@@ -26,6 +26,19 @@ try {
   })
   await page.goto(server.resolvedUrls.local[0]+'smoke.html')
   const search=page.getByRole('searchbox')
+  await page.getByRole('radio',{name:'停止中',exact:true}).check()
+  assert.equal(await page.locator('li').count(),1)
+  assert.match(await page.locator('li').first().innerText(),/Feed 2/)
+  await page.getByRole('radio',{name:'エラーあり',exact:true}).check()
+  assert.equal(await page.locator('li').count(),1)
+  assert.match(await page.locator('li').first().innerText(),/Feed 1/)
+  await page.evaluate(()=>window.selectFeed(2))
+  await page.getByText('収集状態から選んだ購読を表示中', {exact:false}).waitFor()
+  assert.equal(await page.locator('li').count(),1)
+  assert.match(await page.locator('li').first().innerText(),/Feed 2/)
+  await page.getByRole('button',{name:'元の検索条件に戻る'}).click()
+  assert.equal(await page.getByRole('radio',{name:'エラーあり'}).isChecked(),true)
+  await page.getByRole('radio',{name:'すべて',exact:true}).check()
   await search.fill('synthetic error')
   assert.equal(await page.locator('li').count(),0)
   await search.fill('Research')

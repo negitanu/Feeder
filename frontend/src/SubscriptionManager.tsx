@@ -3,17 +3,18 @@ import { apiFetch } from './apiFetch'
 import './subscription-manager.css'
 import type { Feed, Folder } from './LibrarySidebar'
 
-type Props = { feeds: Feed[]; folders: Folder[]; onChanged: () => void; onEdit: (feed: Feed) => void }
+type Props = { feeds: Feed[]; folders: Folder[]; onChanged: () => void; onEdit: (feed: Feed) => void; targetId: number | null; onClearTarget: () => void }
 const limit = 100
 
-export default function SubscriptionManager({ feeds, folders, onChanged, onEdit }: Props) {
+export default function SubscriptionManager({ feeds, folders, onChanged, onEdit, targetId, onClearTarget }: Props) {
   const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<'all' | 'active' | 'paused' | 'error'>('all')
   const [selected, setSelected] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const lock = useRef(false)
   const folderName = (id: number | null) => id === null ? 'フォルダーなし' : folders.find(f => f.id === id)?.name ?? '不明なフォルダー'
-  const visible = feeds.filter(f => [f.title, f.url, folderName(f.folder_id)].some(s => s.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))
+  const visible = feeds.filter(f => (targetId === null || f.id === targetId) && (targetId !== null || status === 'all' || (status === 'active' && !f.paused) || (status === 'paused' && f.paused) || (status === 'error' && !!f.last_error)) && (targetId !== null || [f.title, f.url, folderName(f.folder_id)].some(s => s.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))))
   const activeSelected = selected.filter(id => feeds.some(f => f.id === id))
 
   function toggle(id: number, checked: boolean) {
@@ -48,14 +49,16 @@ export default function SubscriptionManager({ feeds, folders, onChanged, onEdit 
   const selectedFeeds = feeds.filter(f => activeSelected.includes(f.id))
   return <section className="subscription-manager" aria-label="購読管理" style={{ minWidth: 0 }}>
     <h2>購読管理</h2>
-    <label>購読を検索 <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="タイトル、URL、フォルダー" /></label>
+    {targetId !== null && <p>収集状態から選んだ購読を表示中です。一括操作は元の検索条件に戻ると利用できます。 <button type="button" onClick={onClearTarget}>元の検索条件に戻る</button></p>}
+    <search><label>購読を検索 <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="タイトル、URL、フォルダー" disabled={targetId !== null} /></label>
+    <fieldset disabled={targetId !== null}><legend>購読の状態</legend>{([['all','すべて'], ['active','稼働中'], ['paused','停止中'], ['error','エラーあり']] as const).map(([value,label]) => <label key={value} style={{ marginRight: 12 }}><input type="radio" name="subscription-status" checked={status === value} onChange={() => setStatus(value)} /> {label}</label>)}</fieldset></search>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', margin: '12px 0' }}>
       <span>選択: {activeSelected.length}/{limit}件</span>
-      <button type="button" disabled={busy || !selectedFeeds.length} onClick={() => void run(selectedFeeds, 'pause')}>選択を一時停止</button>
-      <button type="button" disabled={busy || !selectedFeeds.length} onClick={() => void run(selectedFeeds, 'resume')}>選択を再開</button>
+      <button type="button" disabled={busy || targetId !== null || !selectedFeeds.length} onClick={() => void run(selectedFeeds, 'pause')}>選択を一時停止</button>
+      <button type="button" disabled={busy || targetId !== null || !selectedFeeds.length} onClick={() => void run(selectedFeeds, 'resume')}>選択を再開</button>
       <button type="button" disabled={busy || !activeSelected.length} onClick={() => setSelected([])}>選択解除</button>
     </div>
-    <p>検索で非表示になった購読も、選択を解除するまで一括操作の対象です。</p>
+    <p>検索や絞り込みで非表示になった購読も、選択を解除するまで一括操作の対象です。</p>
     <p role="status" aria-live="polite">{message}</p>
     {visible.length === 0 ? <p>該当する購読はありません。</p> : <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
       {visible.map(feed => <li key={feed.id} style={{ border: '1px solid currentColor', borderRadius: 6, padding: 12, minWidth: 0, overflowWrap: 'anywhere' }}>

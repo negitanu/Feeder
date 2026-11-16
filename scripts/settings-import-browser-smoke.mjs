@@ -9,7 +9,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
   await browserSession(page, origin)
   await page.goto(origin)
-  await page.getByRole('button', { name: '設定', exact: true }).click()
+  await page.getByRole('button', { name: '設定', exact: true }).click();await page.getByRole('button',{name:'表示・読書とデータ',exact:true}).click();
   const input = page.getByLabel('設定JSONファイル')
   const data = { format: 'feeder-settings', format_version: 1, settings: { reader: { display_timezone: 'Asia/Tokyo', default_view: 'unread' }, collection: { enabled: true, interval_seconds: 600 }, api: { rate_limit: 80 }, folders: [{ name: 'Synthetic folder' }, { name: null }], subscriptions: [{ url: 'https://example.invalid/feed' }], presentation: {appearance:'dark',layout:'line',width:320,collapsed_folders:[]} } }
   const choose = async object => input.setInputFiles({ name: 'settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(object)) })

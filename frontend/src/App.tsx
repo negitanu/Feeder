@@ -34,6 +34,11 @@ type Article = { id: number; title: string; content: string; url: string; publis
 type ArticlePage = { items: Article[]; total: number; has_more: boolean; next_cursor: string | null }
 export type Filter = 'all' | 'unread' | 'starred' | 'recent' | 'later' | 'today'
 export type AppliedFilters = { q?: string; unread?: boolean; starred?: boolean; history?: boolean; later?: boolean; include_muted?: boolean; order: 'new' | 'old' | 'recent'; scope: 'both' | 'title' | 'body'; any?: string; exclude?: string; published_from?: string; published_to?: string; feed_id?: number; folder_id?: number; feed_ids?: string }
+type SettingsCategory = 'subscriptions' | 'reading' | 'integration'
+function settingsFromHash(hash: string): SettingsCategory | null {
+  const match = /^#settings-category-(subscriptions|reading|integration)$/.exec(hash)
+  return match ? match[1] as SettingsCategory : null
+}
 type Theme = 'light' | 'dark' | 'system'
 const PAGE_SIZE = 24
 class RequestError extends Error {
@@ -109,7 +114,9 @@ function App() {
   const [swipeActionsId, setSwipeActionsId] = useState<number | null>(null)
   const articleTouch = useRef<{ id: number; x: number; y: number } | null>(null)
   const suppressArticleClick = useRef(false)
-  const [page, setPage] = useState<'read' | 'settings'>('read')
+  const [page, setPage] = useState<'read' | 'settings'>(() => settingsFromHash(window.location.hash) ? 'settings' : 'read')
+  const [managedFeedId, setManagedFeedId] = useState<number | null>(null)
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>(() => settingsFromHash(window.location.hash) ?? 'subscriptions')
   const [folders, setFolders] = useState<Folder[]>([])
   const [feeds, setFeeds] = useState<Feed[]>([])
   const [source, setSource] = useState<{ kind: 'feed' | 'folder'; id: number } | null>(initialLocation.current.source)
@@ -308,7 +315,9 @@ function App() {
   }
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
-      saveSnapshot(); ++generation.current; ++detailGeneration.current; moreInFlight.current = null
+      const category = settingsFromHash(window.location.hash)
+      if (category) { setSettingsCategory(category); setPage('settings'); return }
+      if (page !== 'settings') saveSnapshot(); ++generation.current; ++detailGeneration.current; moreInFlight.current = null
       const location = parseReaderLocation(new URL(window.location.href))
       const key = typeof event.state?.readerHistoryId === 'string' ? event.state.readerHistoryId : ''
       const saved = snapshots.current.get(key)
@@ -327,7 +336,8 @@ function App() {
     window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop)
   })
   useEffect(() => {
-    if (!readerSettings || !libraryReady) return
+    if (!readerSettings || !libraryReady || page === 'settings') return
+    if (settingsFromHash(window.location.hash)) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
     const url = readerUrl(currentLocation)
     if (!historyReady.current) {
       historyReady.current = true; historyId.current = crypto.randomUUID()
@@ -340,7 +350,7 @@ function App() {
       saveSnapshot(); historyId.current = crypto.randomUUID(); window.history.pushState({ ...window.history.state, readerHistoryId: historyId.current }, '', url)
     }
     latestSnapshot.current = snapshot
-  }, [filter, search, source, applied, selected, openingId, readerSettings, libraryReady, items, total, nextCursor, hasMore, detailSequence, selectedIds])
+  }, [page, filter, search, source, applied, selected, openingId, readerSettings, libraryReady, items, total, nextCursor, hasMore, detailSequence, selectedIds])
   useEffect(() => {
     if (!readerSettings || !libraryReady || loading || pendingWaitForList.current || pendingArticle.current === null) return
     const id = pendingArticle.current; pendingArticle.current = null
@@ -530,7 +540,7 @@ function App() {
     <header className="topbar" inert={isMobile && page === 'read' && (selected !== null || openingId !== null)}>
       <button ref={menuButtonRef} type="button" className="mobile-menu-button" aria-label={mobileSidebarOpen ? "メニューを閉じる" : "メニューを開く"} aria-controls="reader-sidebar" aria-expanded={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(value => !value)}>{mobileSidebarOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}</button>
       <a className="brand" href="#" onClick={e => { e.preventDefault(); closeDetail(false); setPage('read'); setSource(null) }} aria-label="Feeder ホーム"><img className="brand-mark" src={brandMark} alt="" /><span>feeder</span></a>
-      <nav className="global-nav" aria-label="メインナビゲーション"><button className={page === 'read' ? 'active' : ''} onClick={() => { closeDetail(false); setPage('read') }}>読む</button><button className={page === 'settings' ? 'active' : ''} onClick={() => { closeDetail(false); setPage('settings') }}>設定</button></nav>
+      <nav className="global-nav" aria-label="メインナビゲーション"><button className={page === 'read' ? 'active' : ''} onClick={() => { closeDetail(false); if (settingsFromHash(window.location.hash)) window.history.pushState({}, '', window.location.pathname + window.location.search); setPage('read') }}>読む</button><button className={page === 'settings' ? 'active' : ''} onClick={() => { if (page !== 'settings') { saveSnapshot(); closeDetail(false); window.history.pushState({}, '', `#settings-category-${settingsCategory}`); setPage('settings') } }}>設定</button></nav>
       <form className="search" onSubmit={submitSearch} role="search"><Search className="ui-icon" aria-hidden="true" /><input ref={searchRef} aria-label="記事を検索" placeholder="記事を検索" value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" aria-label="検索">検索</button></form>
       <details className="shortcut-help"><summary aria-label="キーボードショートカット">キーボード</summary><div><p><kbd>j</kbd> / <kbd>k</kbd> 次 / 前の記事</p><p><kbd>m</kbd> 既読・未読　<kbd>s</kbd> スター</p><p><kbd>b</kbd> あとで読む　<kbd>v</kbd> / <kbd>Enter</kbd> 元記事</p><p><kbd>Esc</kbd> 閉じる　<kbd>/</kbd> 検索</p></div></details><label className="theme-control"><span className="sr-only">テーマ</span><select aria-label="テーマ" value={theme} onChange={e => setTheme(e.target.value as Theme)}><option value="system">システム</option><option value="light">ライト</option><option value="dark">ダーク</option></select><SunMoon className="ui-icon" aria-hidden="true" /></label>
     </header>
@@ -540,8 +550,15 @@ function App() {
         {([['all', 'すべて', List], ['today', 'Today', CalendarDays], ['unread', '未読', Circle], ['starred', 'スター付き', Star], ['recent', '最近読んだ記事', History], ['later', 'あとで読む', Inbox]] as [Filter, string, LucideIcon][]).map(([key, label, Icon]) => <button key={key} className={`filter ${(key === 'unread' ? globalUnreadActive : filter === key) ? 'active' : ''}`} onClick={() => { setMobileSidebarOpen(false); initialViewChosen.current = true; setFilter(key); setSource(null); closeDetail(false); setPage('read'); if (key === 'unread' || key === 'today') { setSearch(''); setQuery(''); setApplied(current => ({ order: 'new', scope: 'both', include_muted: current.include_muted })); setDraftScope({ scope: 'both', order: 'new', any: '', exclude: '', published_from: '', published_to: '', feed_ids: '' }) } if (key === 'recent' || filter === 'recent') { const order = key === 'recent' ? 'recent' : 'new'; setApplied(current => ({ ...current, order })); setDraftScope(current => ({ ...current, order })) } }} aria-current={(key === 'unread' ? globalUnreadActive : filter === key) ? 'page' : undefined}><span className="filter-icon" aria-hidden="true"><Icon className="ui-icon" /></span>{label}{key === 'today' && todayUnread !== null && <span className="count unread-count" aria-label={`本日の未読 ${todayUnread} 件`}>{todayUnread}</span>}{key === 'unread' && globalUnread !== null && <span className="count unread-count" aria-label={`未読 ${globalUnread} 件`}>{globalUnread}</span>}</button>)}
       </nav><LibrarySidebar folders={folders} feeds={feeds} folderUnread={folderUnread} source={source} collapsed={collapsed} onToggle={id => setCollapsed(current => current.includes(id) ? current.filter(value => value !== id) : [...current,id])} onSelect={selectSource} onEditFeed={feed => { originalFeedUrl.current = feed.url; setLibraryError(''); setEditingFeed(feed) }} onEditFolder={setEditingFolder} onMutate={mutate} onReload={loadLibrary} onMembershipChanged={ids => { if (source?.kind === 'folder' && ids.includes(source.id)) { setSelectedIds([]); setRefreshVersion(value => value + 1) } }} />{libraryError && <div className="sidebar-error" role="alert">{libraryError}</div>}</aside>
       <main id="page-content" tabIndex={-1} className={`main-area ${page === 'settings' ? 'settings-view' : 'reader-view'}${page === 'read' && (selected || openingId !== null) ? ' has-detail' : ''}`} style={{ '--reader-split': readerSplit / 100 } as React.CSSProperties} ref={mainRef}>
-        {page === 'settings' && <><header className="settings-heading"><h1>設定</h1><p>購読・収集、表示、データの持ち出しとAPIアクセスを管理します。</p></header><nav className="settings-jumps" aria-label="設定の項目">{[['購読・収集', [['subscriptions','購読の追加'],['collection','自動収集'],['subscriptions-list','購読管理'],['imports','OPML'],['health','収集状態']]], ['表示・読書', [['appearance','表示設定'],['readability','読みやすさ'],['mute','ミュート']]], ['連携・データ', [['social','公開SNS'],['export','設定の持ち出し'],['keys','APIキー']]]].map(([group, links]) => <div className="settings-nav-group" key={group as string}><span>{group as string}</span>{(links as string[][]).map(([id,label]) => <a key={id} href={`#settings-${id}`} onClick={event => { event.preventDefault(); const target = document.getElementById(`settings-${id}`); target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true }) }}>{label}</a>)}</div>)}</nav><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /></>}
-        {page === 'settings' && <><section className="collection-page collection-section" id="settings-subscriptions-list" tabIndex={-1}><SubscriptionManager feeds={feeds} folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onEdit={feed => { originalFeedUrl.current = feed.url; setLibraryError(''); setEditingFeed(feed) }} /></section><ReaderSettingsPanel settings={readerSettings} presentation={{ appearance: theme, width: Math.round(sidebarWidth), layout, collapsed_folders: [...new Set(collapsed.filter(id => id > 0 && folders.some(folder => folder.id === id)))].slice(0,2000) }} onSaved={settingsSaved} onLayout={setLayout} onTheme={setTheme} onRetry={() => void loadReaderSettings()} /><div className="collection-page" id="settings-readability" tabIndex={-1}><ReadabilityPanel /><ReadLaterSettings /></div><SocialSourcesPanel onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} /><div className="collection-page" id="settings-mute" tabIndex={-1}><MuteRulesPanel feeds={feeds} onChanged={() => { void loadUnreadCount(); setRefreshVersion(value => value + 1) }} /></div><div className="collection-page" id="settings-health" tabIndex={-1}><CollectionHealthPanel timezone={readerSettings?.display_timezone ?? 'UTC'} refreshKey={refreshVersion} onRetry={async id => { try { await request(`/api/feeds/${id}/refresh`, { method: 'POST' }); void loadLibrary(); void loadUnreadCount() } finally { setRefreshVersion(value => value + 1) } }} /></div><ApiKeysPanel />{libraryError && <div className="error-message" role="alert">{libraryError}</div>}</>}
+        {page === 'settings' && <>
+          <header className="settings-heading"><h1>設定</h1><p>購読・収集、表示、データの持ち出しとAPIアクセスを管理します。</p></header>
+          <nav className="settings-jumps settings-categories" aria-label="設定のカテゴリ">{([['subscriptions', '購読・収集'], ['reading', '表示・読書とデータ'], ['integration', '連携・ミュート']] as const).map(([id, label]) => <button type="button" key={id} aria-current={settingsCategory === id ? 'page' : undefined} onClick={() => { if (settingsCategory !== id) { window.history.pushState({}, '', `#settings-category-${id}`); setSettingsCategory(id) } }}>{label}</button>)}</nav>
+          <div className="settings-section-links" aria-label="カテゴリ内の項目">{(settingsCategory === 'subscriptions' ? [['subscriptions','購読の追加'], ['subscriptions-list','購読管理'], ['collection','自動収集'], ['health','収集状態'], ['imports','OPML']] : settingsCategory === 'reading' ? [['appearance','表示設定'], ['readability','読みやすさ・あとで読む'], ['export','設定の入出力']] : [['social','公開SNS'], ['mute','ミュート'], ['keys','APIキー']]).map(([id,label]) => <button type="button" key={id} onClick={() => { const target = document.getElementById(`settings-${id}`); target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true }) }}>{label}</button>)}</div>
+          <div className="settings-category" hidden={settingsCategory !== 'subscriptions'}><CollectionPanel folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onCreateFolder={name => mutate('/api/folders', { method: 'POST', ...json({ name }) })} /><section className="collection-page collection-section" id="settings-subscriptions-list" tabIndex={-1}><SubscriptionManager targetId={managedFeedId} onClearTarget={() => setManagedFeedId(null)} feeds={feeds} folders={folders} onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} onEdit={feed => { originalFeedUrl.current = feed.url; setLibraryError(''); setEditingFeed(feed) }} /></section><div className="collection-page" id="settings-health" tabIndex={-1}><CollectionHealthPanel onManageFeed={id => { setManagedFeedId(id); requestAnimationFrame(() => { const target = document.getElementById("settings-subscriptions-list"); target?.scrollIntoView({ block: "start" }); target?.focus({ preventScroll: true }) }) }} timezone={readerSettings?.display_timezone ?? 'UTC'} refreshKey={refreshVersion} onRetry={async id => { try { await request(`/api/feeds/${id}/refresh`, { method: 'POST' }); void loadLibrary(); void loadUnreadCount() } finally { setRefreshVersion(value => value + 1) } }} /></div></div>
+          <div className="settings-category" hidden={settingsCategory !== 'reading'}><ReaderSettingsPanel settings={readerSettings} presentation={{ appearance: theme, width: Math.round(sidebarWidth), layout, collapsed_folders: [...new Set(collapsed.filter(id => id > 0 && folders.some(folder => folder.id === id)))].slice(0,2000) }} onSaved={settingsSaved} onLayout={setLayout} onTheme={setTheme} onRetry={() => void loadReaderSettings()} /><div className="collection-page" id="settings-readability" tabIndex={-1}><ReadabilityPanel /><ReadLaterSettings /></div></div>
+          <div className="settings-category" hidden={settingsCategory !== 'integration'}><SocialSourcesPanel onChanged={() => { void loadLibrary(); void loadUnreadCount(); setRefreshVersion(value => value + 1) }} /><div className="collection-page" id="settings-mute" tabIndex={-1}><MuteRulesPanel feeds={feeds} onChanged={() => { void loadUnreadCount(); setRefreshVersion(value => value + 1) }} /></div><ApiKeysPanel /></div>
+          {libraryError && <div className="error-message" role="alert">{libraryError}</div>}
+        </>}
         {page === 'read' && <>
         {(selected || openingId !== null) && <DetailSplitter value={readerSplit} onChange={setReaderSplit} />}
         <DetailPresence open={selected !== null || openingId !== null}>{(selected || openingId !== null) && <section ref={detailRef} className="article-detail" style={{ top: detailTop }} aria-label="記事の詳細" aria-busy={openingId !== null} onKeyDown={event => {

@@ -77,7 +77,7 @@ export default function ReadabilityPanel() {
 
   return <section className="readability-panel" aria-labelledby="readability-heading">
     <h2 id="readability-heading" tabIndex={-1}>記事の読みやすさ</h2>
-    <p>設定はこのブラウザに保存されます。</p>
+    <p>変更するとすぐに反映され、このブラウザーに保存されます。</p>
     <label className="readability-control" htmlFor="readability-font-size">
       <span>文字サイズ</span>
       <output htmlFor="readability-font-size">{value.fontSize} px</output>

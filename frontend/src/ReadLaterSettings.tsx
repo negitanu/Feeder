@@ -26,5 +26,5 @@ export default function ReadLaterSettings() {
       setAutoRemove(result.auto_remove)
     } catch { setError('設定を保存できませんでした') } finally { setPending(false) }
   }
-  return <section className="collection-section"><h2>あとで読む</h2><label><input type="checkbox" checked={autoRemove ?? false} disabled={autoRemove === null || pending} onChange={event => void change(event.target.checked)} /> 記事を開いたときにあとで読むから自動で削除する</label>{error && <p role="alert">{error}</p>}</section>
+  return <section className="collection-section"><h2>あとで読む</h2><p>変更するとすぐに保存され、このライブラリを使うすべてのブラウザーに適用されます。</p><label><input type="checkbox" checked={autoRemove ?? false} disabled={autoRemove === null || pending} onChange={event => void change(event.target.checked)} /> 記事を開いたときにあとで読むから自動で削除する</label>{pending && <p role="status">保存中…</p>}{error && <p role="alert">{error}</p>}</section>
 }
